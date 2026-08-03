@@ -1,0 +1,12 @@
+{
+  "name": "mhs-central-execucao",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard estático para acompanhamento de objetivos e atividades MHS.",
+  "scripts": {
+    "validate": "node scripts/validate.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
