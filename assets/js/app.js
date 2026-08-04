@@ -247,12 +247,19 @@
 
     function loadConfig() {
       try {
+        const publicConfig = window.MHS_PUBLIC_CONFIG || {};
+        const localConfig = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+
         return {
           ...DEFAULT_CONFIG,
-          ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
+          ...publicConfig,
+          ...localConfig
         };
       } catch {
-        return { ...DEFAULT_CONFIG };
+        return {
+          ...DEFAULT_CONFIG,
+          ...(window.MHS_PUBLIC_CONFIG || {})
+        };
       }
     }
 

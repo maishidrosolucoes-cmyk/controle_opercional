@@ -24,6 +24,7 @@ $paths = @(
   "assets/img/sector-icons/sala-tecnica.png",
   "assets/img/silhouette.png",
   "assets/js/app.js",
+  "assets/js/public-config.js",
   "dashboard_gestao_atividades_mhs_v3.html",
   "index.html",
   "package.json",

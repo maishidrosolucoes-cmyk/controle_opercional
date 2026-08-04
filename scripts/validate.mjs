@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 const requiredFiles = [
   "index.html",
   "assets/css/styles.css",
+  "assets/js/public-config.js",
   "assets/js/app.js",
   "assets/img/logo-mhs.jpg",
   "assets/img/silhouette.png",
@@ -22,6 +23,7 @@ if (missing.length) {
 
 const html = readFileSync("index.html", "utf8");
 const css = readFileSync("assets/css/styles.css", "utf8");
+const publicConfig = readFileSync("assets/js/public-config.js", "utf8");
 const js = readFileSync("assets/js/app.js", "utf8");
 
 if (!html.includes("./assets/css/styles.css")) {
@@ -32,13 +34,22 @@ if (!html.includes("./assets/js/app.js")) {
   throw new Error("index.html não referencia assets/js/app.js.");
 }
 
+if (!html.includes("./assets/js/public-config.js")) {
+  throw new Error("index.html nao referencia assets/js/public-config.js.");
+}
+
+if (html.indexOf("./assets/js/public-config.js") > html.indexOf("./assets/js/app.js")) {
+  throw new Error("assets/js/public-config.js precisa carregar antes de assets/js/app.js.");
+}
+
 if (!html.includes("./assets/img/logo-mhs.jpg")) {
   throw new Error("index.html não referencia assets/img/logo-mhs.jpg.");
 }
 
+new Function(publicConfig);
 new Function(js);
 
-if (/service[_-]?role/i.test(js)) {
+if (/service[_-]?role/i.test(`${js}\n${publicConfig}`)) {
   throw new Error("Possível chave service_role encontrada no JavaScript. Não suba isso para o GitHub.");
 }
 
