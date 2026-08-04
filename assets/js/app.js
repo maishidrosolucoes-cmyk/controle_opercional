@@ -1667,18 +1667,24 @@
       `;
     }
 
+    const SECTOR_HEADCOUNT = [
+      { terms: ["sala tecnica", "tecnica"], count: 3 },
+      { terms: ["automacao"], count: 2 },
+      { terms: ["compras", "suprimentos"], count: 1 },
+      { terms: ["administracao", "admin"], count: 3 },
+      { terms: ["comercial", "vendas"], count: 3 },
+      { terms: ["financeiro"], count: 2 },
+      { terms: ["producao", "operacao"], count: 1 },
+      { terms: ["gestao", "diretoria"], count: 1 }
+    ];
+
     function sectorPeopleCount(item) {
-      const people = new Set();
+      const key = normalizeText(item.name);
+      const match = SECTOR_HEADCOUNT.find(entry =>
+        entry.terms.some(term => key.includes(term))
+      );
 
-      for (const activity of item.activities) {
-        const responsible = activityResponsible(activity);
-        const key = normalizeText(responsible);
-
-        if (!key || key === "nao definido") continue;
-        people.add(key);
-      }
-
-      return people.size;
+      return match?.count || 0;
     }
 
     function sectorPersonIconHtml() {
@@ -1693,7 +1699,7 @@
       const hidden = count - visible;
 
       return `
-        <span class="sector-people" title="${formatNumber(count)} pessoa(s) identificada(s) no setor" aria-label="${formatNumber(count)} pessoa(s) identificada(s) no setor">
+        <span class="sector-people" title="${formatNumber(count)} pessoa(s) definida(s) no setor" aria-label="${formatNumber(count)} pessoa(s) definida(s) no setor">
           ${Array.from({ length: visible }, sectorPersonIconHtml).join("")}
           ${hidden > 0 ? `<span class="sector-people-more">+${formatNumber(hidden)}</span>` : ""}
         </span>
