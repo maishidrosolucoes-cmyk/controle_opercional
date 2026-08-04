@@ -331,6 +331,20 @@
           <span>Rotinas e tarefas</span>
           <span>03</span>
         </button>
+        <button class="fab-action" id="fabOpenCalendarButton" type="button">
+          <span>Calendário de tarefas</span>
+          <span class="fab-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <rect x="4" y="5" width="16" height="15" rx="3"></rect>
+              <path d="M8 3v4"></path>
+              <path d="M16 3v4"></path>
+              <path d="M4 10h16"></path>
+              <path d="M8 14h2"></path>
+              <path d="M13 14h3"></path>
+              <path d="M8 17h2"></path>
+            </svg>
+          </span>
+        </button>
       </div>
 
       <div class="fab-section">
@@ -420,6 +434,87 @@
       </header>
 
       <div class="modal-body" id="activityModalBody"></div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="calendarModal">
+    <section class="modal calendar-modal" role="dialog" aria-modal="true" aria-labelledby="calendarModalTitle">
+      <header class="modal-header calendar-modal-header">
+        <div>
+          <h2 id="calendarModalTitle">Calendário de tarefas</h2>
+          <p class="meta" id="calendarModalSubtitle">Comercial · compromissos futuros</p>
+        </div>
+        <button class="btn" id="closeCalendarButton">Fechar</button>
+      </header>
+
+      <div class="modal-body calendar-body">
+        <div class="calendar-toolbar">
+          <button class="calendar-nav-button" id="calendarPrevButton" type="button" aria-label="Período anterior">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="m15 18-6-6 6-6"></path>
+            </svg>
+          </button>
+
+          <label class="calendar-month-field">
+            <span>Mês</span>
+            <input id="calendarMonthInput" type="month" />
+          </label>
+
+          <button class="calendar-nav-button" id="calendarNextButton" type="button" aria-label="Próximo período">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="m9 18 6-6-6-6"></path>
+            </svg>
+          </button>
+
+          <div class="calendar-view-toggle" aria-label="Visualização do calendário">
+            <button class="active" data-calendar-view="month" type="button">Mês</button>
+            <button data-calendar-view="week" type="button">Semana</button>
+          </div>
+        </div>
+
+        <div class="calendar-insights" id="calendarInsights"></div>
+
+        <div class="calendar-layout">
+          <section class="calendar-board" aria-label="Calendário Comercial">
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>Dom</span>
+              <span>Seg</span>
+              <span>Ter</span>
+              <span>Qua</span>
+              <span>Qui</span>
+              <span>Sex</span>
+              <span>Sáb</span>
+            </div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+          </section>
+
+          <aside class="calendar-side">
+            <section class="calendar-side-card">
+              <header>
+                <h3>Próximos eventos</h3>
+                <span id="calendarDueCount"></span>
+              </header>
+              <div class="calendar-side-list" id="calendarDueList"></div>
+            </section>
+
+            <section class="calendar-side-card">
+              <header>
+                <h3>Conflitos</h3>
+                <span id="calendarConflictCount"></span>
+              </header>
+              <div class="calendar-side-list" id="calendarConflictList"></div>
+            </section>
+          </aside>
+        </div>
+
+        <section class="calendar-feed-panel">
+          <header>
+            <h3 id="calendarFeedTitle">Eventos do mês</h3>
+            <span id="calendarFeedCount"></span>
+          </header>
+          <div class="calendar-feed" id="calendarFeed"></div>
+        </section>
+      </div>
     </section>
   </div>
   <script src="./assets/js/app.js" defer></script>

@@ -1,0 +1,29 @@
+# Ambiente/local
+.env
+.env.*
+!.env.example
+
+# Dependências e caches
+node_modules/
+.cache/
+.parcel-cache/
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema operacional/editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Estrutura antiga mantida localmente após a organização dos assets
+/image/
+/logo_mhs.jpg
+/silhueta.png

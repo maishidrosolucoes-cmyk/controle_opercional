@@ -58,6 +58,8 @@
       currentRoute: "macro",
       selectedObjective: "",
       macroSectorSort: "atrasos",
+      calendarView: "month",
+      calendarDate: new Date(),
       loading: false,
       autoRefreshHandle: null,
       objectiveResizeObserver: null
@@ -79,6 +81,7 @@
       openConfigButton: $("openConfigButton"),
       fabShell: $("fabShell"),
       fabToggle: $("fabToggle"),
+      fabOpenCalendarButton: $("fabOpenCalendarButton"),
       fabPeriodFilter: $("fabPeriodFilter"),
       fabOpenConfigButton: $("fabOpenConfigButton"),
       fabRefreshButton: $("fabRefreshButton"),
@@ -122,7 +125,23 @@
       activityModalTitle: $("activityModalTitle"),
       activityModalSubtitle: $("activityModalSubtitle"),
       activityModalBody: $("activityModalBody"),
-      closeActivityModalButton: $("closeActivityModalButton")
+      closeActivityModalButton: $("closeActivityModalButton"),
+
+      calendarModal: $("calendarModal"),
+      calendarModalSubtitle: $("calendarModalSubtitle"),
+      closeCalendarButton: $("closeCalendarButton"),
+      calendarPrevButton: $("calendarPrevButton"),
+      calendarNextButton: $("calendarNextButton"),
+      calendarMonthInput: $("calendarMonthInput"),
+      calendarInsights: $("calendarInsights"),
+      calendarGrid: $("calendarGrid"),
+      calendarDueCount: $("calendarDueCount"),
+      calendarDueList: $("calendarDueList"),
+      calendarConflictCount: $("calendarConflictCount"),
+      calendarConflictList: $("calendarConflictList"),
+      calendarFeedTitle: $("calendarFeedTitle"),
+      calendarFeedCount: $("calendarFeedCount"),
+      calendarFeed: $("calendarFeed")
     };
 
     function objectiveFilterIcon(kind) {
@@ -487,6 +506,587 @@
       );
     }
 
+    function pad2(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    function dateKey(value) {
+      const date = value instanceof Date ? value : parseDate(value);
+      if (!date) return "";
+
+      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+    }
+
+    function monthInputValue(date) {
+      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
+    }
+
+    function formatMonthYear(date) {
+      return new Intl.DateTimeFormat("pt-BR", {
+        month: "long",
+        year: "numeric"
+      }).format(date);
+    }
+
+    function startOfMonth(date) {
+      const result = new Date(date);
+      result.setDate(1);
+      result.setHours(0, 0, 0, 0);
+      return result;
+    }
+
+    function endOfMonth(date) {
+      const result = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      result.setHours(23, 59, 59, 999);
+      return result;
+    }
+
+    function startOfWeek(date) {
+      const result = new Date(date);
+      result.setHours(0, 0, 0, 0);
+      result.setDate(result.getDate() - result.getDay());
+      return result;
+    }
+
+    function endOfWeek(date) {
+      const result = startOfWeek(date);
+      result.setDate(result.getDate() + 6);
+      result.setHours(23, 59, 59, 999);
+      return result;
+    }
+
+    function addDays(date, amount) {
+      const result = new Date(date);
+      result.setDate(result.getDate() + amount);
+      return result;
+    }
+
+    function addMonths(date, amount) {
+      const result = startOfMonth(date);
+      result.setMonth(result.getMonth() + amount);
+      return result;
+    }
+
+    function dateInRange(value, start, end) {
+      const date = value instanceof Date ? value : parseDate(value);
+      if (!date) return false;
+
+      return date >= start && date <= end;
+    }
+
+    function calendarPeriodRange() {
+      if (state.calendarView === "week") {
+        return {
+          start: startOfWeek(state.calendarDate),
+          end: endOfWeek(state.calendarDate)
+        };
+      }
+
+      return {
+        start: startOfMonth(state.calendarDate),
+        end: endOfMonth(state.calendarDate)
+      };
+    }
+
+    function calendarGridRange(period) {
+      if (state.calendarView === "week") return period;
+
+      return {
+        start: startOfWeek(period.start),
+        end: endOfWeek(period.end)
+      };
+    }
+
+    function calendarSectorActivities() {
+      return state.activities.filter(activity => {
+        const sectors = [
+          activity.executor_sector_name,
+          activity.registered_by_sector_name,
+          activitySector(activity)
+        ].map(normalizeText);
+
+        return sectors.some(sector => sector.includes("comercial"));
+      });
+    }
+
+    function calendarEventText(activity) {
+      return normalizeText([
+        activity.title,
+        activity.detailing,
+        activity.source_channel
+      ].filter(Boolean).join(" "));
+    }
+
+    function calendarEventLabel(activity) {
+      const text = calendarEventText(activity);
+
+      if (text.includes("reuniao") || text.includes("meeting") || text.includes("meet")) return "Reunião";
+      if (text.includes("visita") || text.includes("visitar")) return "Visita";
+      if (text.includes("encontro")) return "Encontro";
+      if (text.includes("call") || text.includes("zoom") || text.includes("teams") || text.includes("videoconf")) return "Call";
+      if (text.includes("apresenta") || text.includes("demo") || text.includes("demonstracao")) return "Apresentação";
+      if (text.includes("atendimento")) return "Atendimento";
+      if (text.includes("treinamento") || text.includes("workshop")) return "Treinamento";
+      if (text.includes("alinhamento") || text.includes("briefing")) return "Alinhamento";
+      if (text.includes("negociacao") || text.includes("follow up") || text.includes("follow-up")) return "Negociação";
+
+      return "Evento";
+    }
+
+    function isCalendarEventActivity(activity) {
+      const text = calendarEventText(activity);
+      const eventTerms = [
+        "reuniao",
+        "meeting",
+        "meet",
+        "encontro",
+        "visita",
+        "visitar",
+        "agenda",
+        "agendad",
+        "call",
+        "zoom",
+        "teams",
+        "videoconf",
+        "apresenta",
+        "demo",
+        "demonstracao",
+        "atendimento",
+        "treinamento",
+        "workshop",
+        "alinhamento",
+        "briefing",
+        "negociacao",
+        "follow up",
+        "follow-up"
+      ];
+
+      return eventTerms.some(term => text.includes(term));
+    }
+
+    const CALENDAR_MONTHS = {
+      janeiro: 0,
+      jan: 0,
+      fevereiro: 1,
+      fev: 1,
+      marco: 2,
+      mar: 2,
+      abril: 3,
+      abr: 3,
+      maio: 4,
+      mai: 4,
+      junho: 5,
+      jun: 5,
+      julho: 6,
+      jul: 6,
+      agosto: 7,
+      ago: 7,
+      setembro: 8,
+      set: 8,
+      outubro: 9,
+      out: 9,
+      novembro: 10,
+      nov: 10,
+      dezembro: 11,
+      dez: 11
+    };
+
+    function startOfDay(date) {
+      const result = new Date(date);
+      result.setHours(0, 0, 0, 0);
+      return result;
+    }
+
+    function calendarDateReference(activity) {
+      return (
+        parseDate(activity.created_at) ||
+        parseDate(activity.start_date) ||
+        new Date()
+      );
+    }
+
+    function safeCalendarDate(year, month, day) {
+      const date = new Date(year, month, day, 12, 0, 0, 0);
+
+      if (
+        date.getFullYear() !== year ||
+        date.getMonth() !== month ||
+        date.getDate() !== day
+      ) {
+        return null;
+      }
+
+      return date;
+    }
+
+    function normalizeCalendarYear(year, reference) {
+      if (!year) return reference.getFullYear();
+
+      const numeric = Number(year);
+      if (numeric < 100) return 2000 + numeric;
+      return numeric;
+    }
+
+    function dateFromCalendarParts(day, month, year, reference, mode = "explicit") {
+      const numericDay = Number(day);
+      const numericMonth = Number(month);
+
+      if (numericDay < 1 || numericDay > 31 || numericMonth < 1 || numericMonth > 12) {
+        return null;
+      }
+
+      const hasYear = Boolean(year);
+      const normalizedYear = normalizeCalendarYear(year, reference);
+      let date = safeCalendarDate(normalizedYear, numericMonth - 1, numericDay);
+      if (!date) return null;
+
+      const referenceDay = startOfDay(reference);
+
+      if (!hasYear && date < referenceDay) {
+        if (mode === "dayOnly") {
+          date = safeCalendarDate(date.getFullYear(), date.getMonth() + 1, numericDay);
+        } else {
+          date = safeCalendarDate(date.getFullYear() + 1, date.getMonth(), numericDay);
+        }
+      }
+
+      return date;
+    }
+
+    function calendarTextForDate(activity) {
+      return normalizeText([
+        activity.title,
+        activity.detailing
+      ].filter(Boolean).join(" "));
+    }
+
+    function extractCalendarDateFromText(activity) {
+      const text = calendarTextForDate(activity);
+      const reference = calendarDateReference(activity);
+      const candidates = [];
+
+      for (const match of text.matchAll(/(?:^|[^\d])([0-3]?\d)[\/-]([01]?\d)(?:[\/-](\d{2,4}))?(?=$|[^\d])/g)) {
+        const date = dateFromCalendarParts(match[1], match[2], match[3], reference, "explicit");
+        if (date) candidates.push(date);
+      }
+
+      for (const match of text.matchAll(/\b([0-3]?\d)\s*(?:de\s+)?(janeiro|jan|fevereiro|fev|marco|mar|abril|abr|maio|mai|junho|jun|julho|jul|agosto|ago|setembro|set|outubro|out|novembro|nov|dezembro|dez)\b(?:\s*(?:de)?\s*(\d{2,4}))?/g)) {
+        const month = CALENDAR_MONTHS[match[2]];
+        const date = dateFromCalendarParts(match[1], month + 1, match[3], reference, "explicit");
+        if (date) candidates.push(date);
+      }
+
+      for (const match of text.matchAll(/\b(?:dia|para\s+(?:o\s+)?dia|para|marcado\s+(?:para\s+)?(?:o\s+)?dia|marcada\s+(?:para\s+)?(?:o\s+)?dia|agendado\s+(?:para\s+)?(?:o\s+)?dia|agendada\s+(?:para\s+)?(?:o\s+)?dia|em)\s+([0-3]?\d)\b(?!\s*[\/-]\s*\d)/g)) {
+        const date = dateFromCalendarParts(
+          match[1],
+          reference.getMonth() + 1,
+          null,
+          reference,
+          "dayOnly"
+        );
+
+        if (date) candidates.push(date);
+      }
+
+      const today = startOfToday();
+      return candidates
+        .filter(date => date >= today)
+        .sort((a, b) => a - b)[0] || null;
+    }
+
+    function scheduledCalendarDate(activity) {
+      const today = startOfToday();
+      const textDate = extractCalendarDateFromText(activity);
+      const startDate = parseDate(activity.start_date);
+      const dueDate = parseDate(activity.due_date);
+
+      if (textDate) return textDate;
+      if (startDate && startDate >= today) return startDate;
+      if (dueDate && dueDate >= today) return dueDate;
+
+      return null;
+    }
+
+    function pushCalendarEvent(events, activity, type, date, label) {
+      if (!date) return;
+
+      events.push({
+        activity,
+        type,
+        date,
+        key: dateKey(date),
+        label
+      });
+    }
+
+    function calendarEventsFromActivities(activities) {
+      const events = [];
+
+      for (const activity of activities) {
+        const eventDate = scheduledCalendarDate(activity);
+        if (!eventDate || !isCalendarEventActivity(activity)) continue;
+
+        pushCalendarEvent(events, activity, "scheduled", eventDate, calendarEventLabel(activity));
+      }
+
+      return events.sort(calendarEventSort);
+    }
+
+    function calendarEventSort(a, b) {
+      const toneOrder = { today: 0, soon: 1, scheduled: 2, neutral: 3 };
+
+      return (
+        a.date - b.date ||
+        (toneOrder[calendarEventTone(a)] ?? 9) - (toneOrder[calendarEventTone(b)] ?? 9) ||
+        String(a.activity.title || "").localeCompare(String(b.activity.title || ""), "pt-BR")
+      );
+    }
+
+    function calendarEventTone(event) {
+      const today = startOfToday();
+      const eventDay = new Date(event.date);
+      eventDay.setHours(0, 0, 0, 0);
+
+      const soonLimit = new Date(today);
+      soonLimit.setDate(today.getDate() + 3);
+
+      if (eventDay.getTime() === today.getTime()) return "today";
+      if (eventDay > today && eventDay <= soonLimit) return "soon";
+      return "scheduled";
+    }
+
+    function periodCalendarEvents(events, period) {
+      return events.filter(event => dateInRange(event.date, period.start, period.end));
+    }
+
+    function calendarUpcomingEvents(events) {
+      const today = startOfToday();
+
+      return events
+        .filter(event => event.date >= today)
+        .sort(calendarEventSort);
+    }
+
+    function calendarConflictGroups(events) {
+      const grouped = new Map();
+
+      for (const event of events) {
+        const list = grouped.get(event.key) || [];
+        list.push(event);
+        grouped.set(event.key, list);
+      }
+
+      return [...grouped.entries()]
+        .map(([key, dayEvents]) => {
+          const dayActivities = new Map();
+
+          for (const event of dayEvents) {
+            dayActivities.set(event.activity.id, event.activity);
+          }
+
+          return {
+            key,
+            date: parseDate(key),
+            events: dayEvents,
+            activities: [...dayActivities.values()]
+          };
+        })
+        .filter(group => group.activities.length > 1)
+        .sort((a, b) => a.date - b.date || b.activities.length - a.activities.length);
+    }
+
+    function calendarInsightHtml(label, value, detail, tone = "") {
+      return `
+        <div class="calendar-insight ${escapeHtml(tone)}">
+          <strong>${escapeHtml(value)}</strong>
+          <span>${escapeHtml(label)}</span>
+          <small>${escapeHtml(detail)}</small>
+        </div>
+      `;
+    }
+
+    function calendarPersonName(value) {
+      const text = String(value || "").trim();
+      if (!text || normalizeText(text) === "nao definido") return "";
+      return text;
+    }
+
+    function calendarPeopleSummary(activity, compact = false) {
+      const markedBy = calendarPersonName(activity.registered_by_name);
+      const target = calendarPersonName(activity.executor_name);
+      const samePerson = target && markedBy && normalizeText(target) === normalizeText(markedBy);
+
+      if (target && markedBy && !samePerson) {
+        return compact
+          ? `${target} · por ${markedBy}`
+          : `Para ${target} · marcado por ${markedBy}`;
+      }
+
+      if (target) return compact ? `Resp. ${target}` : `Responsável ${target}`;
+      if (markedBy) return `Marcado por ${markedBy}`;
+
+      return "Responsáveis não informados";
+    }
+
+    function calendarEventButtonHtml(event, compact = false) {
+      const tone = calendarEventTone(event);
+      const title = event.activity.title || "Atividade sem título";
+      const clientText = event.activity.client_supplier
+        ? ` · ${event.activity.client_supplier}`
+        : "";
+      const peopleText = calendarPeopleSummary(event.activity, compact);
+      const tooltip = `${title} · ${peopleText}`;
+
+      return `
+        <button type="button" class="calendar-event ${escapeHtml(tone)} ${compact ? "compact" : ""}" data-activity-id="${escapeHtml(event.activity.id)}" title="${escapeHtml(tooltip)}">
+          <span class="calendar-event-type">${escapeHtml(event.label)}</span>
+          <span class="calendar-event-title">${escapeHtml(truncate(title, compact ? 42 : 92))}</span>
+          <span class="calendar-event-people">${escapeHtml(truncate(peopleText, compact ? 46 : 92))}</span>
+          ${compact ? "" : `<span class="calendar-event-meta">${escapeHtml(formatDate(event.date))}${escapeHtml(clientText)}</span>`}
+        </button>
+      `;
+    }
+
+    function calendarEmptyHtml(message) {
+      return `<div class="calendar-empty">${escapeHtml(message)}</div>`;
+    }
+
+    function calendarDayHtml(date, events, conflicts, period) {
+      const key = dateKey(date);
+      const dayEvents = events.filter(event => event.key === key);
+      const conflict = conflicts.find(group => group.key === key);
+      const isOutsideMonth = state.calendarView === "month" && date.getMonth() !== state.calendarDate.getMonth();
+      const isToday = key === dateKey(new Date());
+      const isSelected = key === dateKey(state.calendarDate);
+      const visibleLimit = state.calendarView === "week" ? 5 : 1;
+      const visibleEvents = dayEvents.slice(0, visibleLimit);
+      const hidden = dayEvents.length - visibleEvents.length;
+
+      return `
+        <div class="calendar-day ${isOutsideMonth ? "outside" : ""} ${isToday ? "today" : ""} ${isSelected ? "selected" : ""} ${conflict ? "conflict" : ""}" data-calendar-day="${key}">
+          <div class="calendar-day-top">
+            <span class="calendar-day-number">${date.getDate()}</span>
+            <span class="calendar-day-flags">
+              ${dayEvents.length ? `<span class="calendar-day-count">${formatNumber(dayEvents.length)} evento${dayEvents.length > 1 ? "s" : ""}</span>` : ""}
+              ${conflict ? `<span class="calendar-flag conflict">Conflito</span>` : ""}
+              ${dayEvents.some(event => calendarEventTone(event) === "today") ? `<span class="calendar-flag today">Hoje</span>` : ""}
+            </span>
+          </div>
+          <div class="calendar-day-events">
+            ${visibleEvents.map(event => calendarEventButtonHtml(event, true)).join("")}
+            ${hidden > 0 ? `<span class="calendar-more">+${formatNumber(hidden)} evento${hidden > 1 ? "s" : ""}</span>` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCalendarGrid(period, events, conflicts) {
+      const gridRange = calendarGridRange(period);
+      const days = [];
+      let cursor = new Date(gridRange.start);
+
+      while (cursor <= gridRange.end) {
+        days.push(new Date(cursor));
+        cursor = addDays(cursor, 1);
+      }
+
+      elements.calendarGrid.classList.toggle("week-mode", state.calendarView === "week");
+      elements.calendarGrid.innerHTML = days
+        .map(day => calendarDayHtml(day, events, conflicts, period))
+        .join("");
+    }
+
+    function calendarUpcomingItemHtml(event) {
+      const tone = calendarEventTone(event);
+
+      return `
+        <button type="button" class="calendar-side-item ${tone}" data-activity-id="${escapeHtml(event.activity.id)}">
+          <strong>${escapeHtml(truncate(event.activity.title || "Evento sem título", 84))}</strong>
+          <span>${escapeHtml(formatDate(event.date))} · ${escapeHtml(event.label)}</span>
+          <small>${escapeHtml(calendarPeopleSummary(event.activity))}</small>
+        </button>
+      `;
+    }
+
+    function calendarConflictItemHtml(group) {
+      const titles = group.activities
+        .slice(0, 2)
+        .map(activity => truncate(activity.title || "Atividade sem título", 48));
+      const hidden = group.activities.length - titles.length;
+
+      return `
+        <div class="calendar-side-item conflict">
+          <strong>${escapeHtml(formatDate(group.date))} · ${formatNumber(group.activities.length)} atividade(s)</strong>
+          <span>${escapeHtml(titles.join(" · "))}${hidden > 0 ? ` +${formatNumber(hidden)}` : ""}</span>
+        </div>
+      `;
+    }
+
+    function renderCalendar() {
+      const activities = calendarSectorActivities();
+      const events = calendarEventsFromActivities(activities);
+      const period = calendarPeriodRange();
+      const periodEvents = periodCalendarEvents(events, period);
+      const weekEvents = periodCalendarEvents(events, {
+        start: startOfWeek(state.calendarDate),
+        end: endOfWeek(state.calendarDate)
+      });
+      const upcomingEvents = calendarUpcomingEvents(events);
+      const nextEvent = upcomingEvents[0] || null;
+      const conflicts = calendarConflictGroups(periodEvents);
+      const viewLabel = state.calendarView === "week" ? "Semana" : "Mês";
+
+      elements.calendarMonthInput.value = monthInputValue(state.calendarDate);
+      elements.calendarModalSubtitle.textContent =
+        `Comercial · eventos futuros · ${formatMonthYear(state.calendarDate)}`;
+
+      document.querySelectorAll("[data-calendar-view]").forEach(button => {
+        button.classList.toggle("active", button.dataset.calendarView === state.calendarView);
+      });
+
+      elements.calendarInsights.innerHTML = [
+        calendarInsightHtml("Eventos", formatNumber(periodEvents.length), viewLabel.toLowerCase()),
+        calendarInsightHtml("Esta semana", formatNumber(weekEvents.length), "compromissos", weekEvents.length ? "active" : ""),
+        calendarInsightHtml("Próximo", nextEvent ? formatDate(nextEvent.date) : "—", nextEvent ? truncate(nextEvent.activity.title || "Evento", 34) : "sem agenda futura", nextEvent ? "today" : ""),
+        calendarInsightHtml("Conflitos", formatNumber(conflicts.length), "dias sensíveis", conflicts.length ? "warning" : "")
+      ].join("");
+
+      renderCalendarGrid(period, periodEvents, conflicts);
+
+      elements.calendarDueCount.textContent = upcomingEvents.length
+        ? formatNumber(upcomingEvents.length)
+        : "";
+      elements.calendarDueList.innerHTML = upcomingEvents.length
+        ? upcomingEvents.slice(0, 8).map(calendarUpcomingItemHtml).join("")
+        : calendarEmptyHtml("Nenhum evento comercial futuro identificado.");
+
+      elements.calendarConflictCount.textContent = conflicts.length
+        ? formatNumber(conflicts.length)
+        : "";
+      elements.calendarConflictList.innerHTML = conflicts.length
+        ? conflicts.slice(0, 6).map(calendarConflictItemHtml).join("")
+        : calendarEmptyHtml("Sem sobreposição de eventos agendados.");
+
+      elements.calendarFeedTitle.textContent = state.calendarView === "week"
+        ? "Eventos da semana"
+        : "Eventos do mês";
+      elements.calendarFeedCount.textContent = periodEvents.length
+        ? formatNumber(periodEvents.length)
+        : "";
+      elements.calendarFeed.innerHTML = periodEvents.length
+        ? periodEvents.map(event => calendarEventButtonHtml(event)).join("")
+        : calendarEmptyHtml("Nenhum evento comercial neste período.");
+    }
+
+    function openCalendar() {
+      renderCalendar();
+      elements.calendarModal.style.display = "flex";
+    }
+
+    function closeCalendar() {
+      elements.calendarModal.style.display = "none";
+    }
+
     function hasValidConfig() {
       return Boolean(
         normalizeBaseUrl(state.config.url) &&
@@ -621,6 +1221,7 @@
 
         populateSectorFilter();
         renderCurrentRoute();
+        if (elements.calendarModal.style.display === "flex") renderCalendar();
         elements.lastUpdated.textContent = formatDate(new Date(), true);
         setConnectionState("connected", "Conectado ao Supabase");
       } catch (error) {
@@ -2114,6 +2715,59 @@
       openConfig();
     });
 
+    elements.fabOpenCalendarButton.addEventListener("click", () => {
+      closeFabMenu();
+      openCalendar();
+    });
+
+    elements.closeCalendarButton.addEventListener("click", closeCalendar);
+
+    elements.calendarModal.addEventListener("click", event => {
+      if (event.target === elements.calendarModal) closeCalendar();
+    });
+
+    elements.calendarPrevButton.addEventListener("click", () => {
+      state.calendarDate = state.calendarView === "week"
+        ? addDays(state.calendarDate, -7)
+        : addMonths(state.calendarDate, -1);
+      renderCalendar();
+    });
+
+    elements.calendarNextButton.addEventListener("click", () => {
+      state.calendarDate = state.calendarView === "week"
+        ? addDays(state.calendarDate, 7)
+        : addMonths(state.calendarDate, 1);
+      renderCalendar();
+    });
+
+    elements.calendarMonthInput.addEventListener("change", () => {
+      const [year, month] = String(elements.calendarMonthInput.value || "").split("-").map(Number);
+      if (!year || !month) return;
+
+      state.calendarDate = new Date(year, month - 1, 1);
+      renderCalendar();
+    });
+
+    document.querySelectorAll("[data-calendar-view]").forEach(button => {
+      button.addEventListener("click", () => {
+        state.calendarView = button.dataset.calendarView === "week" ? "week" : "month";
+        renderCalendar();
+      });
+    });
+
+    elements.calendarGrid.addEventListener("click", event => {
+      if (event.target.closest("[data-activity-id]")) return;
+
+      const day = event.target.closest("[data-calendar-day]");
+      if (!day) return;
+
+      const selected = parseDate(day.dataset.calendarDay);
+      if (!selected) return;
+
+      state.calendarDate = selected;
+      renderCalendar();
+    });
+
     elements.fabToggle.addEventListener("click", toggleFabMenu);
 
     document.body.appendChild(elements.macroSectorSortMenu);
@@ -2242,6 +2896,7 @@
       closeObjectiveFilters();
       closeConfig();
       closeActivityModal();
+      closeCalendar();
     });
 
     configureAutoRefresh();
