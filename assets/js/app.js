@@ -249,12 +249,18 @@
       try {
         const publicConfig = window.MHS_PUBLIC_CONFIG || {};
         const localConfig = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-
-        return {
+        const config = {
           ...DEFAULT_CONFIG,
-          ...publicConfig,
-          ...localConfig
+          ...publicConfig
         };
+
+        for (const [key, value] of Object.entries(localConfig)) {
+          if (value === null || value === undefined) continue;
+          if (typeof value === "string" && !value.trim()) continue;
+          config[key] = value;
+        }
+
+        return config;
       } catch {
         return {
           ...DEFAULT_CONFIG,
@@ -2828,11 +2834,15 @@
 
     elements.clearConfigButton.addEventListener("click", () => {
       localStorage.removeItem(STORAGE_KEY);
-      state.config = { ...DEFAULT_CONFIG };
+      state.config = loadConfig();
       state.activities = [];
       configureAutoRefresh();
       closeConfig();
-      elements.setupBanner.style.display = "block";
+      if (hasValidConfig()) {
+        loadDashboard();
+        return;
+      }
+      elements.setupBanner.style.display = hasValidConfig() ? "none" : "block";
       setConnectionState("", "Aguardando configuração");
       renderCurrentRoute();
     });
