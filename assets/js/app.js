@@ -2,6 +2,7 @@
 
     const STORAGE_KEY = "mhs_dashboard_cfg_v1";
     const SCHEMA = "tarefas_v2";
+    const FAB_ACCESS_PASSWORD = "mhs@calend";
 
     const DEFAULT_CONFIG = {
       url: "https://pwmgbaxywvyyfmlkygqr.supabase.co",
@@ -20,7 +21,11 @@
       },
       tasks: {
         title: "Rotinas e tarefas",
-        subtitle: "Atividades sem objetivo e visão completa."
+        subtitle: "Fila ativa de atividades abertas e em andamento."
+      },
+      calendar: {
+        title: "Calendário",
+        subtitle: "Eventos futuros e conflitos de agenda."
       }
     };
 
@@ -106,14 +111,16 @@
       objectiveDetailBody: $("objectiveDetailBody"),
 
       tasksCountLabel: $("tasksCountLabel"),
-      taskSearch: $("taskSearch"),
-      taskLayerFilter: $("taskLayerFilter"),
-      taskStatusFilter: $("taskStatusFilter"),
       taskSectorFilter: $("taskSectorFilter"),
-      clearTaskFilters: $("clearTaskFilters"),
+      taskObjectiveFilter: $("taskObjectiveFilter"),
       tasksTable: $("tasksTable"),
 
       configModal: $("configModal"),
+      adminAuthModal: $("adminAuthModal"),
+      adminPasswordInput: $("adminPasswordInput"),
+      adminAuthError: $("adminAuthError"),
+      adminLoginButton: $("adminLoginButton"),
+      closeAdminAuthButton: $("closeAdminAuthButton"),
       closeConfigButton: $("closeConfigButton"),
       saveConfigButton: $("saveConfigButton"),
       clearConfigButton: $("clearConfigButton"),
@@ -130,6 +137,7 @@
       calendarModal: $("calendarModal"),
       calendarModalSubtitle: $("calendarModalSubtitle"),
       closeCalendarButton: $("closeCalendarButton"),
+      calendarTodayButton: $("calendarTodayButton"),
       calendarPrevButton: $("calendarPrevButton"),
       calendarNextButton: $("calendarNextButton"),
       calendarMonthInput: $("calendarMonthInput"),
@@ -141,7 +149,13 @@
       calendarConflictList: $("calendarConflictList"),
       calendarFeedTitle: $("calendarFeedTitle"),
       calendarFeedCount: $("calendarFeedCount"),
-      calendarFeed: $("calendarFeed")
+      calendarFeed: $("calendarFeed"),
+      calendarDayModal: $("calendarDayModal"),
+      calendarDayModalTitle: $("calendarDayModalTitle"),
+      calendarDayModalSubtitle: $("calendarDayModalSubtitle"),
+      calendarDayModalSummary: $("calendarDayModalSummary"),
+      calendarDayTimeline: $("calendarDayTimeline"),
+      closeCalendarDayModalButton: $("closeCalendarDayModalButton")
     };
 
     function objectiveFilterIcon(kind) {
@@ -169,6 +183,84 @@
       };
 
       return icons[kind] || icons.category;
+    }
+
+    function taskFilterIcon(kind) {
+      const icons = {
+        sector: `
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7.5h16"></path>
+            <path d="M7 12h10"></path>
+            <path d="M10 16.5h4"></path>
+            <circle cx="18" cy="7.5" r="1.7"></circle>
+            <circle cx="8" cy="12" r="1.7"></circle>
+            <circle cx="13" cy="16.5" r="1.7"></circle>
+          </svg>
+        `,
+        objective: `
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="7"></circle>
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 2.8v3"></path>
+            <path d="M12 18.2v3"></path>
+            <path d="M2.8 12h3"></path>
+            <path d="M18.2 12h3"></path>
+          </svg>
+        `
+      };
+
+      return icons[kind] || icons.sector;
+    }
+
+    function mountTaskFilters() {
+      const filterRoot = document.querySelector(".task-filter-source");
+      const header = document.querySelector('.page-view[data-page="tasks"] .page-heading');
+
+      if (!filterRoot || !header || filterRoot.dataset.mounted) return;
+
+      const configs = [
+        {
+          kind: "sector",
+          title: "Filtrar por área",
+          field: elements.taskSectorFilter.closest(".field")
+        },
+        {
+          kind: "objective",
+          title: "Filtrar por objetivo",
+          field: elements.taskObjectiveFilter.closest(".field")
+        }
+      ];
+
+      filterRoot.dataset.mounted = "true";
+      filterRoot.className = "task-filter-dock";
+      filterRoot.setAttribute("aria-label", "Filtros da fila ativa");
+      header.classList.add("tasks-heading-with-filters");
+
+      for (const config of configs) {
+        if (!config.field) continue;
+
+        const details = document.createElement("details");
+        details.className = "task-filter";
+        details.dataset.taskFilter = config.kind;
+
+        const summary = document.createElement("summary");
+        summary.setAttribute("aria-label", config.title);
+        summary.setAttribute("title", config.title);
+        summary.innerHTML = `
+          <span class="task-filter-icon">${taskFilterIcon(config.kind)}</span>
+          <span class="task-filter-current"></span>
+        `;
+
+        const popover = document.createElement("div");
+        popover.className = "task-filter-popover";
+        popover.appendChild(config.field);
+
+        details.append(summary, popover);
+        filterRoot.appendChild(details);
+      }
+
+      header.appendChild(filterRoot);
+      updateTaskFilterState();
     }
 
     function mountObjectiveFilters() {
@@ -213,7 +305,10 @@
         const summary = document.createElement("summary");
         summary.setAttribute("aria-label", config.title);
         summary.setAttribute("title", config.title);
-        summary.innerHTML = objectiveFilterIcon(config.kind);
+        summary.innerHTML = `
+          <span class="objective-filter-icon">${objectiveFilterIcon(config.kind)}</span>
+          <span class="objective-filter-current"></span>
+        `;
 
         const popover = document.createElement("div");
         popover.className = "objective-filter-popover";
@@ -240,8 +335,56 @@
         sector: Boolean(elements.objectiveSectorFilter.value)
       };
 
+      const labels = {
+        search: elements.objectiveSearch.value.trim() || "Pesquisar",
+        category: selectedOptionLabel(elements.objectiveCategoryFilter, "Categoria"),
+        sector: selectedOptionLabel(elements.objectiveSectorFilter, "Setor")
+      };
+
+      const defaults = {
+        search: "Pesquisar",
+        category: "Categoria",
+        sector: "Setor"
+      };
+
       document.querySelectorAll(".objective-filter").forEach(filter => {
-        filter.classList.toggle("active", Boolean(states[filter.dataset.objectiveFilter]));
+        const kind = filter.dataset.objectiveFilter;
+        const isActive = Boolean(states[kind]);
+        const current = filter.querySelector(".objective-filter-current");
+
+        filter.classList.toggle("active", isActive);
+        if (current) current.textContent = isActive ? truncate(labels[kind], 20) : defaults[kind];
+      });
+    }
+
+    function closeTaskFilters(except = null) {
+      document.querySelectorAll(".task-filter").forEach(filter => {
+        if (filter !== except) filter.removeAttribute("open");
+      });
+    }
+
+    function selectedOptionLabel(select, fallback) {
+      return select.selectedOptions?.[0]?.textContent?.trim() || fallback;
+    }
+
+    function updateTaskFilterState() {
+      const states = {
+        sector: Boolean(elements.taskSectorFilter.value),
+        objective: Boolean(elements.taskObjectiveFilter.value)
+      };
+
+      const labels = {
+        sector: selectedOptionLabel(elements.taskSectorFilter, "Área"),
+        objective: selectedOptionLabel(elements.taskObjectiveFilter, "Objetivo")
+      };
+
+      document.querySelectorAll(".task-filter").forEach(filter => {
+        const kind = filter.dataset.taskFilter;
+        const isActive = Boolean(states[kind]);
+        const current = filter.querySelector(".task-filter-current");
+
+        filter.classList.toggle("active", isActive);
+        if (current) current.textContent = isActive ? truncate(labels[kind], 22) : (kind === "sector" ? "Área" : "Objetivo");
       });
     }
 
@@ -306,6 +449,12 @@
     function truncate(value, max = 190) {
       const text = String(value || "").trim();
       return text.length > max ? `${text.slice(0, max).trim()}...` : text;
+    }
+
+    function firstWords(value, maxWords = 4) {
+      const words = String(value || "").trim().split(/\s+/).filter(Boolean);
+      if (words.length <= maxWords) return words.join(" ");
+      return `${words.slice(0, maxWords).join(" ")}...`;
     }
 
     function parseDate(value) {
@@ -541,6 +690,12 @@
       }).format(date);
     }
 
+    function formatMonthShort(date) {
+      return new Intl.DateTimeFormat("pt-BR", {
+        month: "short"
+      }).format(date).replace(".", "");
+    }
+
     function startOfMonth(date) {
       const result = new Date(date);
       result.setDate(1);
@@ -611,21 +766,14 @@
     }
 
     function calendarSectorActivities() {
-      return state.activities.filter(activity => {
-        const sectors = [
-          activity.executor_sector_name,
-          activity.registered_by_sector_name,
-          activitySector(activity)
-        ].map(normalizeText);
-
-        return sectors.some(sector => sector.includes("comercial"));
-      });
+      return state.activities;
     }
 
     function calendarEventText(activity) {
       return normalizeText([
         activity.title,
         activity.detailing,
+        activity.client_supplier,
         activity.source_channel
       ].filter(Boolean).join(" "));
     }
@@ -634,6 +782,10 @@
       const text = calendarEventText(activity);
 
       if (text.includes("reuniao") || text.includes("meeting") || text.includes("meet")) return "Reunião";
+      if (text.includes("feira")) return "Feira";
+      if (text.includes("congresso")) return "Congresso";
+      if (text.includes("exposicao") || text.includes("expo")) return "Exposição";
+      if (text.includes("seminario") || text.includes("palestra")) return "Seminário";
       if (text.includes("visita") || text.includes("visitar")) return "Visita";
       if (text.includes("encontro")) return "Encontro";
       if (text.includes("call") || text.includes("zoom") || text.includes("teams") || text.includes("videoconf")) return "Call";
@@ -652,6 +804,13 @@
         "reuniao",
         "meeting",
         "meet",
+        "feira",
+        "evento",
+        "congresso",
+        "exposicao",
+        "expo",
+        "seminario",
+        "palestra",
         "encontro",
         "visita",
         "visitar",
@@ -675,6 +834,20 @@
       ];
 
       return eventTerms.some(term => text.includes(term));
+    }
+
+    function isMultiDayCalendarEvent(activity) {
+      const text = calendarEventText(activity);
+      return [
+        "feira",
+        "evento",
+        "congresso",
+        "exposicao",
+        "expo",
+        "seminario",
+        "workshop",
+        "treinamento"
+      ].some(term => text.includes(term));
     }
 
     const CALENDAR_MONTHS = {
@@ -703,6 +876,8 @@
       dezembro: 11,
       dez: 11
     };
+
+    const CALENDAR_MONTH_PATTERN = "janeiro|jan|fevereiro|fev|marco|mar|abril|abr|maio|mai|junho|jun|julho|jul|agosto|ago|setembro|set|outubro|out|novembro|nov|dezembro|dez";
 
     function startOfDay(date) {
       const result = new Date(date);
@@ -769,14 +944,164 @@
     function calendarTextForDate(activity) {
       return normalizeText([
         activity.title,
-        activity.detailing
-      ].filter(Boolean).join(" "));
+        activity.detailing,
+        activity.client_supplier,
+        activity.source_channel
+      ].filter(Boolean).join(" "))
+        .replace(/[–—−]/g, "-")
+        .replace(/\s+/g, " ");
     }
 
-    function extractCalendarDateFromText(activity) {
+    function uniqueCalendarDates(dates) {
+      const map = new Map();
+
+      for (const date of dates) {
+        if (!date) continue;
+        map.set(dateKey(date), date);
+      }
+
+      return [...map.values()].sort((a, b) => a - b);
+    }
+
+    function calendarRangeDates(start, end, maxDays = 45) {
+      if (!start || !end || end < start) return [];
+
+      const dates = [];
+      let cursor = startOfDay(start);
+      const last = startOfDay(end);
+
+      while (cursor <= last && dates.length < maxDays) {
+        dates.push(new Date(cursor));
+        cursor = addDays(cursor, 1);
+      }
+
+      return dates;
+    }
+
+    function pushCalendarDateRange(candidates, startDate, endDate) {
+      candidates.push(...calendarRangeDates(startDate, endDate));
+    }
+
+    function calendarDaysFromTextList(value) {
+      return (String(value || "").match(/[0-3]?\d/g) || [])
+        .filter(day => {
+          const numeric = Number(day);
+          return numeric >= 1 && numeric <= 31;
+        });
+    }
+
+    function pushCalendarDayList(candidates, daysText, monthIndex, year, reference) {
+      if (!Number.isInteger(monthIndex)) return;
+
+      for (const day of calendarDaysFromTextList(daysText)) {
+        const date = dateFromCalendarParts(day, monthIndex + 1, year, reference, "explicit");
+        if (date) candidates.push(date);
+      }
+    }
+
+    function extractCalendarDatesFromText(activity) {
       const text = calendarTextForDate(activity);
       const reference = calendarDateReference(activity);
       const candidates = [];
+      const looseDayList = "((?:[0-3]?\\d\\s*(?:,|;|e|\\s)\\s*)+[0-3]?\\d)";
+
+      if (isMultiDayCalendarEvent(activity)) {
+        for (const match of text.matchAll(new RegExp(`\\b(${CALENDAR_MONTH_PATTERN})\\b(?:\\s*(?:de)?\\s*(\\d{2,4}))?[^\\d]{0,18}${looseDayList}`, "g"))) {
+          pushCalendarDayList(candidates, match[3], CALENDAR_MONTHS[match[1]], match[2], reference);
+        }
+
+        for (const match of text.matchAll(new RegExp(`\\b${looseDayList}\\s*(?:de|em)?\\s+(${CALENDAR_MONTH_PATTERN})\\b(?:\\s*(?:de)?\\s*(\\d{2,4}))?`, "g"))) {
+          pushCalendarDayList(candidates, match[1], CALENDAR_MONTHS[match[2]], match[3], reference);
+        }
+      }
+
+      for (const match of text.matchAll(new RegExp(`\\b(?:entre(?:\\s+(?:os\\s+)?dias?)?|do\\s+dia|dos\\s+dias|de)\\s+([0-3]?\\d)\\s*(?:a|ate|ao|e)\\s*(?:o\\s+)?(?:dia\\s+)?([0-3]?\\d)\\s*(?:de|em)\\s+(${CALENDAR_MONTH_PATTERN})\\b(?:\\s*(?:de)?\\s*(\\d{2,4}))?`, "g"))) {
+        const month = CALENDAR_MONTHS[match[3]];
+        const startDate = dateFromCalendarParts(match[1], month + 1, match[4], reference, "explicit");
+        const endDate = dateFromCalendarParts(match[2], month + 1, match[4], reference, "explicit");
+
+        pushCalendarDateRange(candidates, startDate, endDate);
+      }
+
+      for (const match of text.matchAll(/\b(?:entre|de)\s+([0-3]?\d)[\/-]([01]?\d)(?:[\/-](\d{2,4}))?\s*(?:a|ate|ao|e)\s*([0-3]?\d)[\/-]([01]?\d)(?:[\/-](\d{2,4}))?/g)) {
+        const startDate = dateFromCalendarParts(match[1], match[2], match[3], reference, "explicit");
+        const endDate = dateFromCalendarParts(match[4], match[5], match[6] || match[3], reference, "explicit");
+
+        pushCalendarDateRange(candidates, startDate, endDate);
+      }
+
+      for (const match of text.matchAll(new RegExp(`\\b(?:dias?|datas?)\\s+${looseDayList}\\s*(?:de|em)?\\s+(${CALENDAR_MONTH_PATTERN})\\b(?:\\s*(?:de)?\\s*(\\d{2,4}))?`, "g"))) {
+        pushCalendarDayList(candidates, match[1], CALENDAR_MONTHS[match[2]], match[3], reference);
+      }
+
+      for (const match of text.matchAll(new RegExp(`\\b(${CALENDAR_MONTH_PATTERN})\\b(?:\\s*(?:de)?\\s*(\\d{2,4}))?[^\\d]{0,36}\\b(?:dias?|datas?)\\s+${looseDayList}`, "g"))) {
+        pushCalendarDayList(candidates, match[3], CALENDAR_MONTHS[match[1]], match[2], reference);
+      }
+
+      for (const match of text.matchAll(new RegExp(`\\b(${CALENDAR_MONTH_PATTERN})\\b(?:\\s*(?:de)?\\s*(\\d{2,4}))?[^\\d]{0,36}\\b(?:dias?|periodo)\\s+([0-3]?\\d)\\s*(?:a|ate|ao)\\s*(?:o\\s+)?(?:dia\\s+)?([0-3]?\\d)\\b`, "g"))) {
+        const month = CALENDAR_MONTHS[match[1]];
+        const startDate = dateFromCalendarParts(match[3], month + 1, match[2], reference, "explicit");
+        const endDate = dateFromCalendarParts(match[4], month + 1, match[2], reference, "explicit");
+
+        pushCalendarDateRange(candidates, startDate, endDate);
+      }
+
+      for (const match of text.matchAll(new RegExp(`\\b([0-3]?\\d)\\s*(?:de\\s+)?(${CALENDAR_MONTH_PATTERN})(?:\\s*(?:de)?\\s*(\\d{2,4}))?\\s*(?:a|ate|ao|-)\\s*(?:o\\s+)?(?:dia\\s+)?([0-3]?\\d)\\s*(?:de\\s+)?(${CALENDAR_MONTH_PATTERN})(?:\\s*(?:de)?\\s*(\\d{2,4}))?`, "g"))) {
+        const startMonth = CALENDAR_MONTHS[match[2]];
+        const endMonth = CALENDAR_MONTHS[match[5]];
+        const startDate = dateFromCalendarParts(match[1], startMonth + 1, match[3] || match[6], reference, "explicit");
+        const endDate = dateFromCalendarParts(match[4], endMonth + 1, match[6] || match[3], reference, "explicit");
+
+        pushCalendarDateRange(candidates, startDate, endDate);
+      }
+
+      for (const match of text.matchAll(/\b([0-3]?\d)\s*(?:-|a|ate|ao)\s*(?:o\s+)?(?:dia\s+)?([0-3]?\d)\s*[\/\-.]\s*([01]?\d)(?:[\/\-.](\d{2,4}))?/g)) {
+        const startDate = dateFromCalendarParts(match[1], match[3], match[4], reference, "explicit");
+        const endDate = dateFromCalendarParts(match[2], match[3], match[4], reference, "explicit");
+
+        pushCalendarDateRange(candidates, startDate, endDate);
+      }
+
+      for (const match of text.matchAll(new RegExp(`\\b((?:[0-3]?\\d\\s*(?:,|e)\\s*)+[0-3]?\\d)\\s*(?:de|em)\\s+(${CALENDAR_MONTH_PATTERN})\\b(?:\\s*(?:de)?\\s*(\\d{2,4}))?`, "g"))) {
+        pushCalendarDayList(candidates, match[1], CALENDAR_MONTHS[match[2]], match[3], reference);
+      }
+
+      for (const match of text.matchAll(/\b((?:[0-3]?\d\s*(?:,|e)\s*)+[0-3]?\d)\s*[\/-]\s*([01]?\d)(?:[\/-](\d{2,4}))?/g)) {
+        pushCalendarDayList(candidates, match[1], Number(match[2]) - 1, match[3], reference);
+      }
+
+      for (const match of text.matchAll(/\b((?:[0-3]?\d\s*(?:,|e)\s*)+[0-3]?\d)\s*(?:de\s+)?(janeiro|jan|fevereiro|fev|marco|mar|abril|abr|maio|mai|junho|jun|julho|jul|agosto|ago|setembro|set|outubro|out|novembro|nov|dezembro|dez)\b(?:\s*(?:de)?\s*(\d{2,4}))?/g)) {
+        pushCalendarDayList(candidates, match[1], CALENDAR_MONTHS[match[2]], match[3], reference);
+      }
+
+      for (const match of text.matchAll(/\b([0-3]?\d)\s*(?:a|ate|ao)\s*(?:o\s+)?(?:dia\s+)?([0-3]?\d)\s*(?:de\s+)?(janeiro|jan|fevereiro|fev|marco|mar|abril|abr|maio|mai|junho|jun|julho|jul|agosto|ago|setembro|set|out|outubro|novembro|nov|dezembro|dez)\b(?:\s*(?:de)?\s*(\d{2,4}))?/g)) {
+        const month = CALENDAR_MONTHS[match[3]];
+        const startDate = dateFromCalendarParts(match[1], month + 1, match[4], reference, "explicit");
+        const endDate = dateFromCalendarParts(match[2], month + 1, match[4], reference, "explicit");
+
+        pushCalendarDateRange(candidates, startDate, endDate);
+      }
+
+      for (const match of text.matchAll(/\b([0-3]?\d)\s*(?:a|ate|ao)\s*(?:o\s+)?(?:dia\s+)?([0-3]?\d)\s*[\/-]\s*([01]?\d)(?:[\/-](\d{2,4}))?/g)) {
+        const startDate = dateFromCalendarParts(match[1], match[3], match[4], reference, "explicit");
+        const endDate = dateFromCalendarParts(match[2], match[3], match[4], reference, "explicit");
+
+        pushCalendarDateRange(candidates, startDate, endDate);
+      }
+
+      for (const match of text.matchAll(/([0-3]?\d)[\/\-.]([01]?\d)(?:[\/\-.](\d{2,4}))?\s*(?:a|ate|ao|-)\s*([0-3]?\d)(?:[\/\-.]([01]?\d))?(?:[\/\-.](\d{2,4}))?/g)) {
+        const startDate = dateFromCalendarParts(match[1], match[2], match[3], reference, "explicit");
+        const endMonth = match[5] || match[2];
+        const endYear = match[6] || match[3];
+        const endDate = dateFromCalendarParts(match[4], endMonth, endYear, reference, "explicit");
+
+        pushCalendarDateRange(candidates, startDate, endDate);
+      }
+
+      for (const match of text.matchAll(/(?:^|[^\d])([0-3]?\d)[\/\-.]([01]?\d)(?:[\/\-.](\d{2,4}))?(?=$|[^\d])/g)) {
+        const date = dateFromCalendarParts(match[1], match[2], match[3], reference, "explicit");
+        if (date) candidates.push(date);
+      }
 
       for (const match of text.matchAll(/(?:^|[^\d])([0-3]?\d)[\/-]([01]?\d)(?:[\/-](\d{2,4}))?(?=$|[^\d])/g)) {
         const date = dateFromCalendarParts(match[1], match[2], match[3], reference, "explicit");
@@ -802,32 +1127,108 @@
       }
 
       const today = startOfToday();
-      return candidates
-        .filter(date => date >= today)
-        .sort((a, b) => a - b)[0] || null;
+      return uniqueCalendarDates(candidates.filter(date => date >= today));
     }
 
-    function scheduledCalendarDate(activity) {
+    function scheduledCalendarDates(activity) {
       const today = startOfToday();
-      const textDate = extractCalendarDateFromText(activity);
+      const textDates = extractCalendarDatesFromText(activity);
       const startDate = parseDate(activity.start_date);
       const dueDate = parseDate(activity.due_date);
+      const rangeStart = startDate && dueDate && dueDate >= today && dueDate >= startDate
+        ? (startDate < today ? today : startDate)
+        : null;
+      const rangeDates = rangeStart
+        ? uniqueCalendarDates(calendarRangeDates(rangeStart, dueDate))
+        : [];
 
-      if (textDate) return textDate;
-      if (startDate && startDate >= today) return startDate;
-      if (dueDate && dueDate >= today) return dueDate;
+      if (textDates.length) {
+        return isMultiDayCalendarEvent(activity)
+          ? uniqueCalendarDates([...textDates, ...rangeDates])
+          : textDates;
+      }
+
+      if (rangeDates.length) return rangeDates;
+
+      if (startDate && startDate >= today) return [startDate];
+      if (dueDate && dueDate >= today) return [dueDate];
+
+      return [];
+    }
+
+    function calendarTimeInfo(hour, minute = 0) {
+      const numericHour = Number(hour);
+      const numericMinute = Number(minute || 0);
+
+      if (
+        Number.isNaN(numericHour) ||
+        Number.isNaN(numericMinute) ||
+        numericHour < 0 ||
+        numericHour > 23 ||
+        numericMinute < 0 ||
+        numericMinute > 59
+      ) {
+        return null;
+      }
+
+      return {
+        hour: numericHour,
+        minute: numericMinute,
+        key: pad2(numericHour),
+        label: `${pad2(numericHour)}h${numericMinute ? pad2(numericMinute) : ""}`
+      };
+    }
+
+    function calendarTimeFromDateField(value) {
+      const text = String(value || "");
+      const match = text.match(/[T\s]([01]?\d|2[0-3]):([0-5]\d)/);
+      return match ? calendarTimeInfo(match[1], match[2]) : null;
+    }
+
+    function calendarTimeFromText(activity) {
+      const text = normalizeText([
+        activity.title,
+        activity.detailing
+      ].filter(Boolean).join(" ")).replace(/\s+/g, " ");
+
+      const withMarker = text.match(
+        /\b(?:as|para as|marcado para as|marcada para as|agendado para as|agendada para as|horario|hora)\s+([01]?\d|2[0-3])(?:\s*(?:h|:)\s*([0-5]\d))?\b(?!\s*[\/-]\s*\d)/
+      );
+      if (withMarker) return calendarTimeInfo(withMarker[1], withMarker[2] || 0);
+
+      const compact = text.match(/\b([01]?\d|2[0-3])\s*(?:h|:)\s*([0-5]\d)\b/);
+      if (compact) return calendarTimeInfo(compact[1], compact[2]);
 
       return null;
     }
 
+    function calendarEventTime(activity, eventDate) {
+      const eventDayKey = dateKey(eventDate);
+      const startTime = dateKey(activity.start_date) === eventDayKey
+        ? calendarTimeFromDateField(activity.start_date)
+        : null;
+      const dueTime = dateKey(activity.due_date) === eventDayKey
+        ? calendarTimeFromDateField(activity.due_date)
+        : null;
+
+      return (
+        calendarTimeFromText(activity) ||
+        startTime ||
+        dueTime
+      );
+    }
+
     function pushCalendarEvent(events, activity, type, date, label) {
       if (!date) return;
+      const time = calendarEventTime(activity, date);
 
       events.push({
         activity,
         type,
         date,
         key: dateKey(date),
+        timeKey: time?.key || "",
+        timeLabel: time?.label || "",
         label
       });
     }
@@ -836,10 +1237,13 @@
       const events = [];
 
       for (const activity of activities) {
-        const eventDate = scheduledCalendarDate(activity);
-        if (!eventDate || !isCalendarEventActivity(activity)) continue;
+        if (!isCalendarEventActivity(activity)) continue;
 
-        pushCalendarEvent(events, activity, "scheduled", eventDate, calendarEventLabel(activity));
+        const eventDates = scheduledCalendarDates(activity);
+
+        for (const eventDate of eventDates) {
+          pushCalendarEvent(events, activity, "scheduled", eventDate, calendarEventLabel(activity));
+        }
       }
 
       return events.sort(calendarEventSort);
@@ -884,14 +1288,18 @@
       const grouped = new Map();
 
       for (const event of events) {
-        const list = grouped.get(event.key) || [];
+        if (!event.timeKey) continue;
+
+        const groupKey = `${event.key}T${event.timeKey}`;
+        const list = grouped.get(groupKey) || [];
         list.push(event);
-        grouped.set(event.key, list);
+        grouped.set(groupKey, list);
       }
 
       return [...grouped.entries()]
         .map(([key, dayEvents]) => {
           const dayActivities = new Map();
+          const firstEvent = dayEvents[0];
 
           for (const event of dayEvents) {
             dayActivities.set(event.activity.id, event.activity);
@@ -899,13 +1307,20 @@
 
           return {
             key,
-            date: parseDate(key),
+            dateKey: firstEvent.key,
+            date: parseDate(firstEvent.key),
+            timeKey: firstEvent.timeKey,
+            timeLabel: firstEvent.timeLabel,
             events: dayEvents,
             activities: [...dayActivities.values()]
           };
         })
         .filter(group => group.activities.length > 1)
-        .sort((a, b) => a.date - b.date || b.activities.length - a.activities.length);
+        .sort((a, b) =>
+          a.date - b.date ||
+          Number(a.timeKey) - Number(b.timeKey) ||
+          b.activities.length - a.activities.length
+        );
     }
 
     function calendarInsightHtml(label, value, detail, tone = "") {
@@ -941,21 +1356,34 @@
       return "Responsáveis não informados";
     }
 
+    function calendarEventSector(activity) {
+      return activitySector(activity) || activity.executor_sector_name || activity.registered_by_sector_name || "Setor não informado";
+    }
+
+    function calendarEventMetaLine(event) {
+      const parts = [
+        formatDate(event.date),
+        event.timeLabel,
+        calendarEventSector(event.activity),
+        event.activity.client_supplier
+      ].filter(Boolean);
+
+      return parts.join(" · ");
+    }
+
     function calendarEventButtonHtml(event, compact = false) {
       const tone = calendarEventTone(event);
       const title = event.activity.title || "Atividade sem título";
-      const clientText = event.activity.client_supplier
-        ? ` · ${event.activity.client_supplier}`
-        : "";
       const peopleText = calendarPeopleSummary(event.activity, compact);
       const tooltip = `${title} · ${peopleText}`;
 
       return `
         <button type="button" class="calendar-event ${escapeHtml(tone)} ${compact ? "compact" : ""}" data-activity-id="${escapeHtml(event.activity.id)}" title="${escapeHtml(tooltip)}">
+          <span class="calendar-event-accent" aria-hidden="true"></span>
           <span class="calendar-event-type">${escapeHtml(event.label)}</span>
           <span class="calendar-event-title">${escapeHtml(truncate(title, compact ? 42 : 92))}</span>
           <span class="calendar-event-people">${escapeHtml(truncate(peopleText, compact ? 46 : 92))}</span>
-          ${compact ? "" : `<span class="calendar-event-meta">${escapeHtml(formatDate(event.date))}${escapeHtml(clientText)}</span>`}
+          ${compact ? "" : `<span class="calendar-event-meta">${escapeHtml(calendarEventMetaLine(event))}</span>`}
         </button>
       `;
     }
@@ -967,20 +1395,20 @@
     function calendarDayHtml(date, events, conflicts, period) {
       const key = dateKey(date);
       const dayEvents = events.filter(event => event.key === key);
-      const conflict = conflicts.find(group => group.key === key);
+      const conflict = conflicts.find(group => group.dateKey === key);
       const isOutsideMonth = state.calendarView === "month" && date.getMonth() !== state.calendarDate.getMonth();
       const isToday = key === dateKey(new Date());
       const isSelected = key === dateKey(state.calendarDate);
-      const visibleLimit = state.calendarView === "week" ? 5 : 1;
+      const visibleLimit = state.calendarView === "week" ? 6 : 3;
       const visibleEvents = dayEvents.slice(0, visibleLimit);
       const hidden = dayEvents.length - visibleEvents.length;
 
       return `
-        <div class="calendar-day ${isOutsideMonth ? "outside" : ""} ${isToday ? "today" : ""} ${isSelected ? "selected" : ""} ${conflict ? "conflict" : ""}" data-calendar-day="${key}">
+        <div class="calendar-day ${dayEvents.length ? "has-events" : ""} ${isOutsideMonth ? "outside" : ""} ${isToday ? "today" : ""} ${isSelected ? "selected" : ""} ${conflict ? "conflict" : ""}" data-calendar-day="${key}">
           <div class="calendar-day-top">
             <span class="calendar-day-number">${date.getDate()}</span>
             <span class="calendar-day-flags">
-              ${dayEvents.length ? `<span class="calendar-day-count">${formatNumber(dayEvents.length)} evento${dayEvents.length > 1 ? "s" : ""}</span>` : ""}
+              ${dayEvents.length ? `<span class="calendar-day-count" data-count="${formatNumber(dayEvents.length)}">${formatNumber(dayEvents.length)} evento${dayEvents.length > 1 ? "s" : ""}</span>` : ""}
               ${conflict ? `<span class="calendar-flag conflict">Conflito</span>` : ""}
               ${dayEvents.some(event => calendarEventTone(event) === "today") ? `<span class="calendar-flag today">Hoje</span>` : ""}
             </span>
@@ -1014,9 +1442,15 @@
 
       return `
         <button type="button" class="calendar-side-item ${tone}" data-activity-id="${escapeHtml(event.activity.id)}">
-          <strong>${escapeHtml(truncate(event.activity.title || "Evento sem título", 84))}</strong>
-          <span>${escapeHtml(formatDate(event.date))} · ${escapeHtml(event.label)}</span>
-          <small>${escapeHtml(calendarPeopleSummary(event.activity))}</small>
+          <span class="calendar-side-date" aria-hidden="true">
+            <strong>${escapeHtml(String(event.date.getDate()).padStart(2, "0"))}</strong>
+            <small>${escapeHtml(formatMonthShort(event.date))}</small>
+          </span>
+          <span class="calendar-side-copy">
+            <strong>${escapeHtml(truncate(event.activity.title || "Evento sem título", 92))}</strong>
+            <span>${escapeHtml([event.timeLabel, event.label, calendarEventSector(event.activity)].filter(Boolean).join(" · "))}</span>
+            <small>${escapeHtml(calendarPeopleSummary(event.activity))}</small>
+          </span>
         </button>
       `;
     }
@@ -1029,10 +1463,94 @@
 
       return `
         <div class="calendar-side-item conflict">
-          <strong>${escapeHtml(formatDate(group.date))} · ${formatNumber(group.activities.length)} atividade(s)</strong>
+          <strong>${escapeHtml(formatDate(group.date))} · ${escapeHtml(group.timeLabel)} · ${formatNumber(group.activities.length)} evento(s)</strong>
           <span>${escapeHtml(titles.join(" · "))}${hidden > 0 ? ` +${formatNumber(hidden)}` : ""}</span>
         </div>
       `;
+    }
+
+    function calendarDayEvents(date) {
+      const events = calendarEventsFromActivities(calendarSectorActivities());
+      const key = dateKey(date);
+
+      return events.filter(event => event.key === key);
+    }
+
+    function calendarEventObservation(activity) {
+      const text = String(activity.detailing || "").trim();
+      if (text) return text;
+
+      return "Sem observações registradas.";
+    }
+
+    function calendarDayAgendaEventHtml(event) {
+      const observation = calendarEventObservation(event.activity);
+
+      return `
+        <button type="button" class="calendar-day-agenda-event ${escapeHtml(calendarEventTone(event))}" data-activity-id="${escapeHtml(event.activity.id)}">
+          <span class="calendar-day-agenda-dot" aria-hidden="true"></span>
+          <span class="calendar-day-agenda-copy">
+            <strong>${escapeHtml(truncate(event.activity.title || "Evento sem título", 96))}</strong>
+            <span>${escapeHtml([event.timeLabel || "Sem horário", event.label, calendarEventSector(event.activity)].filter(Boolean).join(" · "))}</span>
+            <small>${escapeHtml(calendarPeopleSummary(event.activity))}</small>
+            <em>${escapeHtml(truncate(observation, 180))}</em>
+          </span>
+        </button>
+      `;
+    }
+
+    function calendarHourRowHtml(hour, events) {
+      const hourKey = pad2(hour);
+      const hourEvents = events.filter(event => event.timeKey === hourKey);
+
+      return `
+        <div class="calendar-hour-row ${hourEvents.length ? "has-events" : ""}">
+          <time>${hourKey}:00</time>
+          <div class="calendar-hour-slot">
+            ${hourEvents.length
+              ? hourEvents.map(calendarDayAgendaEventHtml).join("")
+              : `<span class="calendar-hour-empty">Livre</span>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function openCalendarDayModal(date) {
+      const events = calendarDayEvents(date);
+      const timedEvents = events.filter(event => event.timeKey);
+      const untimedEvents = events.filter(event => !event.timeKey);
+      const hours = Array.from({ length: 24 }, (_, hour) => hour);
+
+      elements.calendarDayModalTitle.textContent = `Agenda de ${formatDate(date)}`;
+      elements.calendarDayModalSubtitle.textContent = events.length
+        ? `${formatNumber(events.length)} evento(s) identificado(s)`
+        : "Nenhum evento marcado neste dia.";
+      elements.calendarDayModalSummary.innerHTML = `
+        <div>
+          <strong>${escapeHtml(formatNumber(timedEvents.length))}</strong>
+          <span>com horário</span>
+        </div>
+        <div>
+          <strong>${escapeHtml(formatNumber(untimedEvents.length))}</strong>
+          <span>sem horário</span>
+        </div>
+      `;
+      elements.calendarDayTimeline.innerHTML = `
+        ${untimedEvents.length ? `
+          <section class="calendar-untimed-events">
+            <header>Sem horário definido</header>
+            <div>${untimedEvents.map(calendarDayAgendaEventHtml).join("")}</div>
+          </section>
+        ` : ""}
+        <section class="calendar-hours-list">
+          ${hours.map(hour => calendarHourRowHtml(hour, timedEvents)).join("")}
+        </section>
+      `;
+      elements.calendarDayModal.style.display = "flex";
+    }
+
+    function closeCalendarDayModal() {
+      elements.calendarDayModal.style.display = "none";
     }
 
     function renderCalendar() {
@@ -1040,64 +1558,68 @@
       const events = calendarEventsFromActivities(activities);
       const period = calendarPeriodRange();
       const periodEvents = periodCalendarEvents(events, period);
-      const weekEvents = periodCalendarEvents(events, {
-        start: startOfWeek(state.calendarDate),
-        end: endOfWeek(state.calendarDate)
-      });
       const upcomingEvents = calendarUpcomingEvents(events);
       const nextEvent = upcomingEvents[0] || null;
       const conflicts = calendarConflictGroups(periodEvents);
       const viewLabel = state.calendarView === "week" ? "Semana" : "Mês";
+      const selectedKey = dateKey(state.calendarDate);
+      const selectedEvents = events.filter(event => event.key === selectedKey);
 
       elements.calendarMonthInput.value = monthInputValue(state.calendarDate);
-      elements.calendarModalSubtitle.textContent =
-        `Comercial · eventos futuros · ${formatMonthYear(state.calendarDate)}`;
+      if (elements.calendarModalSubtitle) {
+        elements.calendarModalSubtitle.textContent =
+          `Todos os setores · ${formatMonthYear(state.calendarDate)} · ${formatDate(state.calendarDate)}`;
+      }
 
       document.querySelectorAll("[data-calendar-view]").forEach(button => {
         button.classList.toggle("active", button.dataset.calendarView === state.calendarView);
       });
 
       elements.calendarInsights.innerHTML = [
-        calendarInsightHtml("Eventos", formatNumber(periodEvents.length), viewLabel.toLowerCase()),
-        calendarInsightHtml("Esta semana", formatNumber(weekEvents.length), "compromissos", weekEvents.length ? "active" : ""),
+        calendarInsightHtml("No dia", formatNumber(selectedEvents.length), formatDate(state.calendarDate), selectedEvents.length ? "active" : ""),
+        calendarInsightHtml("Período", formatNumber(periodEvents.length), viewLabel.toLowerCase()),
         calendarInsightHtml("Próximo", nextEvent ? formatDate(nextEvent.date) : "—", nextEvent ? truncate(nextEvent.activity.title || "Evento", 34) : "sem agenda futura", nextEvent ? "today" : ""),
         calendarInsightHtml("Conflitos", formatNumber(conflicts.length), "dias sensíveis", conflicts.length ? "warning" : "")
       ].join("");
 
       renderCalendarGrid(period, periodEvents, conflicts);
 
-      elements.calendarDueCount.textContent = upcomingEvents.length
-        ? formatNumber(upcomingEvents.length)
+      const dueTitle = elements.calendarDueList.closest(".calendar-side-card")?.querySelector("h3");
+      if (dueTitle) {
+        dueTitle.textContent = state.calendarView === "week"
+          ? "Eventos da semana"
+          : "Eventos do mês";
+      }
+
+      elements.calendarDueCount.textContent = periodEvents.length
+        ? formatNumber(periodEvents.length)
         : "";
-      elements.calendarDueList.innerHTML = upcomingEvents.length
-        ? upcomingEvents.slice(0, 8).map(calendarUpcomingItemHtml).join("")
-        : calendarEmptyHtml("Nenhum evento comercial futuro identificado.");
+      elements.calendarDueList.innerHTML = periodEvents.length
+        ? periodEvents.map(calendarUpcomingItemHtml).join("")
+        : calendarEmptyHtml("Nenhum evento identificado neste período.");
 
       elements.calendarConflictCount.textContent = conflicts.length
         ? formatNumber(conflicts.length)
         : "";
       elements.calendarConflictList.innerHTML = conflicts.length
         ? conflicts.slice(0, 6).map(calendarConflictItemHtml).join("")
-        : calendarEmptyHtml("Sem sobreposição de eventos agendados.");
+        : calendarEmptyHtml("Sem eventos no mesmo horário.");
 
-      elements.calendarFeedTitle.textContent = state.calendarView === "week"
-        ? "Eventos da semana"
-        : "Eventos do mês";
-      elements.calendarFeedCount.textContent = periodEvents.length
-        ? formatNumber(periodEvents.length)
+      elements.calendarFeedTitle.textContent = `Agenda de ${formatDate(state.calendarDate)}`;
+      elements.calendarFeedCount.textContent = selectedEvents.length
+        ? formatNumber(selectedEvents.length)
         : "";
-      elements.calendarFeed.innerHTML = periodEvents.length
-        ? periodEvents.map(event => calendarEventButtonHtml(event)).join("")
-        : calendarEmptyHtml("Nenhum evento comercial neste período.");
+      elements.calendarFeed.innerHTML = selectedEvents.length
+        ? selectedEvents.map(event => calendarEventButtonHtml(event)).join("")
+        : calendarEmptyHtml("Nenhum evento para este dia. Selecione outra data no calendário.");
     }
 
     function openCalendar() {
-      renderCalendar();
-      elements.calendarModal.style.display = "flex";
+      navigate("calendar");
     }
 
     function closeCalendar() {
-      elements.calendarModal.style.display = "none";
+      if (elements.calendarModal) elements.calendarModal.style.display = "none";
     }
 
     function hasValidConfig() {
@@ -1189,7 +1711,7 @@
     async function loadDashboard() {
       if (!hasValidConfig()) {
         elements.setupBanner.style.display = "block";
-        openConfig();
+        setConnectionState("", "Aguardando configuraÃ§Ã£o");
         return;
       }
 
@@ -1234,7 +1756,6 @@
 
         populateSectorFilter();
         renderCurrentRoute();
-        if (elements.calendarModal.style.display === "flex") renderCalendar();
         elements.lastUpdated.textContent = formatDate(new Date(), true);
         setConnectionState("connected", "Conectado ao Supabase");
       } catch (error) {
@@ -1562,8 +2083,8 @@
 
       elements.macroMetricStrip.innerHTML = [
         {
-          label: "Total de objetivos",
-          value: formatNumber(objectives.length),
+          label: "Atividades ativas",
+          value: formatNumber(stats.open),
           emoji: "📊",
           tone: ""
         },
@@ -1574,18 +2095,18 @@
           tone: ""
         },
         {
-          label: "Ativas / atrasadas",
-          value: `${formatNumber(stats.open)} / ${formatNumber(stats.overdue)}`,
+          label: "Atividades atrasadas",
+          value: formatNumber(stats.overdue),
           emoji: "⏳",
-          tone: stats.overdue > 0 ? "warning" : ""
+          tone: stats.overdue > 0 ? "danger" : ""
         },
         {
-          label: "Conclusão",
+          label: "Taxa de conclusão",
           value: formatPercent(stats.completionRate),
           emoji: "🏁",
           tone: "success"
         }
-      ].map(metricHtml).join("");
+      ].filter(metric => metric.label !== "Total de atividades").map(metricHtml).join("");
 
       elements.macroSectorTable.innerHTML = sectors.length
         ? sectors.map(macroSectorRowHtml).join("")
@@ -1726,6 +2247,75 @@
       return latestActivityDate(b) - latestActivityDate(a);
     }
 
+    function dueDay(activity) {
+      const due = parseDate(activity.due_date);
+      if (!due) return null;
+      due.setHours(0, 0, 0, 0);
+      return due;
+    }
+
+    function daysFromToday(date) {
+      if (!date) return null;
+      return Math.round((date.getTime() - startOfToday().getTime()) / 86400000);
+    }
+
+    function riskDeadlineLabel(activity) {
+      const diff = daysFromToday(dueDay(activity));
+      if (diff === null) return "sem prazo";
+      if (diff < 0) return `${Math.abs(diff)}d atraso`;
+      if (diff === 0) return "vence hoje";
+      if (diff === 1) return "vence amanha";
+      return `vence em ${diff}d`;
+    }
+
+    function riskActivitySort(a, b) {
+      const aOverdue = isOverdue(a) ? 0 : 1;
+      const bOverdue = isOverdue(b) ? 0 : 1;
+      if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+
+      return (
+        (dueDay(a)?.getTime() ?? Infinity) -
+        (dueDay(b)?.getTime() ?? Infinity)
+      );
+    }
+
+    function isDueSoon(activity, days = 3) {
+      if (!isOpen(activity) || isOverdue(activity)) return false;
+      const diff = daysFromToday(dueDay(activity));
+      return diff !== null && diff >= 0 && diff <= days;
+    }
+
+    function sectorRiskHtml(item) {
+      const overdue = item.activities.filter(isOverdue).sort(riskActivitySort);
+      const soon = item.activities.filter(activity => isDueSoon(activity)).sort(riskActivitySort);
+      const risks = overdue.length ? overdue : soon;
+
+      if (!risks.length) {
+        return `<span class="sector-live-list sector-risk-list"><span class="live-empty risk-empty">Sem atraso critico</span></span>`;
+      }
+
+      const visible = risks.slice(0, 2);
+      const hidden = risks.length - visible.length;
+      const hiddenLabel = overdue.length ? "atraso(s)" : "vencimento(s)";
+
+      return `
+        <span class="sector-live-list sector-risk-list">
+          ${visible.map(activity => {
+            const title = activity.title || "Atividade sem titulo";
+            const tone = isOverdue(activity) ? "danger" : "warning";
+            return `
+              <span class="live-pill risk-pill ${tone}" title="${escapeHtml(title)}" aria-label="${escapeHtml(`Risco: ${title}`)}">
+                <span class="live-dot risk-dot" aria-hidden="true"></span>
+                <span class="risk-label">${escapeHtml(riskDeadlineLabel(activity))}</span>
+                <span class="live-task risk-task">${escapeHtml(truncate(title, 76))}</span>
+              </span>
+            `;
+          }).join("")}
+          ${hidden > 0 ? `<span class="live-more risk-more">+${formatNumber(hidden)} ${hiddenLabel}</span>` : ""}
+        </span>
+      `;
+    }
+
     function sectorLiveHtml(item) {
       const openActivities = item.activities.filter(isOpen);
 
@@ -1802,11 +2392,20 @@
               ${sectorPeopleHtml(item)}
             </span>
           </td>
-          <td data-label="Total" class="number-cell">${formatNumber(item.total)}</td>
-          <td data-label="Ativas" class="number-cell">${formatNumber(item.open)}</td>
-          <td data-label="Atraso" class="number-cell ${item.overdue > 0 ? "overdue" : ""}">${formatNumber(item.overdue)}</td>
-          <td data-label="Equipe agora">
-            ${sectorLiveHtml(item)}
+          <td data-label="Total" class="number-cell">
+            <span class="mobile-metric-label" aria-hidden="true">TOTAL</span>
+            <span class="mobile-metric-value">${formatNumber(item.total)}</span>
+          </td>
+          <td data-label="Ativas" class="number-cell">
+            <span class="mobile-metric-label" aria-hidden="true">ATIVAS</span>
+            <span class="mobile-metric-value">${formatNumber(item.open)}</span>
+          </td>
+          <td data-label="Atraso" class="number-cell ${item.overdue > 0 ? "overdue" : ""}">
+            <span class="mobile-metric-label" aria-hidden="true">ATRASOS</span>
+            <span class="mobile-metric-value">${formatNumber(item.overdue)}</span>
+          </td>
+          <td data-label="Riscos">
+            ${sectorRiskHtml(item)}
           </td>
           <td data-label="Atingimento">
             ${sectorDonutHtml(item)}
@@ -1925,21 +2524,28 @@
       const detailPanel = document.querySelector(".objective-detail-panel");
       const content = document.querySelector(".content");
       const items = [...list.querySelectorAll(".list-button")];
+      const setScrollable = isScrollable => {
+        list.classList.toggle("is-scrollable", Boolean(isScrollable));
+        listPanel?.classList.toggle("has-scroll-window", Boolean(isScrollable));
+      };
 
       if (!items.length) {
         list.style.height = "auto";
         list.style.maxHeight = "none";
         list.style.overflowY = "visible";
+        setScrollable(false);
         if (listPanel) listPanel.style.minHeight = "";
         if (listBody) listBody.style.minHeight = "";
         if (detailPanel) detailPanel.style.minHeight = "";
         return;
       }
 
-      if (window.matchMedia("(max-width: 1120px)").matches) {
+      if (window.matchMedia("(max-width: 899px)").matches) {
         list.style.height = "auto";
         list.style.maxHeight = "min(62svh, 720px)";
-        list.style.overflowY = items.length > 6 ? "auto" : "visible";
+        const isScrollable = items.length > 6;
+        list.style.overflowY = isScrollable ? "auto" : "visible";
+        setScrollable(isScrollable);
         if (listPanel) listPanel.style.minHeight = "";
         if (listBody) listBody.style.minHeight = "";
         if (detailPanel) detailPanel.style.minHeight = "";
@@ -1971,7 +2577,31 @@
       if (detailPanel) detailPanel.style.minHeight = `${Math.ceil(panelHeight)}px`;
       list.style.height = `${Math.ceil(targetHeight)}px`;
       list.style.maxHeight = `${Math.ceil(targetHeight)}px`;
-      list.style.overflowY = list.scrollHeight > targetHeight + 1 ? "auto" : "hidden";
+      const isScrollable = list.scrollHeight > targetHeight + 1;
+      list.style.overflowY = isScrollable ? "auto" : "hidden";
+      setScrollable(isScrollable);
+    }
+
+    function isMobileViewport() {
+      return window.matchMedia("(max-width: 720px)").matches;
+    }
+
+    function focusMobileObjectiveSelection(scrollDetail = false) {
+      if (!isMobileViewport()) return;
+
+      const selected = elements.objectiveList.querySelector(".list-button.active");
+      selected?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center"
+      });
+
+      if (scrollDetail) {
+        document.querySelector(".objective-detail-panel")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      }
     }
 
     function observeObjectiveDetailResize() {
@@ -2015,7 +2645,10 @@
       elements.objectiveList.innerHTML = objectives.map(objectiveListButtonHtml).join("");
       elements.objectiveList.classList.add("has-active-selection");
       renderObjectiveDetail(objectives.find(item => item.name === state.selectedObjective));
-      requestAnimationFrame(syncObjectiveListHeight);
+      requestAnimationFrame(() => {
+        syncObjectiveListHeight();
+        focusMobileObjectiveSelection(false);
+      });
     }
 
     function filteredObjectives(objectives) {
@@ -2369,77 +3002,86 @@
 
     function populateSectorFilter() {
       const currentTaskSector = elements.taskSectorFilter.value;
+      const currentTaskObjective = elements.taskObjectiveFilter.value;
       const currentObjectiveSector = elements.objectiveSectorFilter.value;
       const sectors = [...new Set(state.activities.map(activitySector).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, "pt-BR"));
+      const activeActivities = state.activities.filter(isOpen);
+      const taskSectors = [...new Set(activeActivities.map(activitySector).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, "pt-BR"));
+      const taskObjectives = [...new Set(activeActivities.map(activityObjective).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, "pt-BR"));
+      const hasRoutineActivities = activeActivities.some(activity => !activityObjective(activity));
 
       const options =
         `<option value="">Todos</option>` +
         sectors
           .map(sector => `<option value="${escapeHtml(sector)}">${escapeHtml(sector)}</option>`)
           .join("");
+      const taskSectorOptions =
+        `<option value="">Todos</option>` +
+        taskSectors
+          .map(sector => `<option value="${escapeHtml(sector)}">${escapeHtml(sector)}</option>`)
+          .join("");
+      const objectiveOptions =
+        `<option value="">Todos</option>` +
+        (hasRoutineActivities ? `<option value="__without_objective">Sem objetivo</option>` : "") +
+        taskObjectives
+          .map(objective => `<option value="${escapeHtml(objective)}">${escapeHtml(objective)}</option>`)
+          .join("");
 
-      elements.taskSectorFilter.innerHTML = options;
+      elements.taskSectorFilter.innerHTML = taskSectorOptions;
+      elements.taskObjectiveFilter.innerHTML = objectiveOptions;
       elements.objectiveSectorFilter.innerHTML = options;
 
-      if (sectors.includes(currentTaskSector)) {
+      if (taskSectors.includes(currentTaskSector)) {
         elements.taskSectorFilter.value = currentTaskSector;
+      }
+
+      if (
+        taskObjectives.includes(currentTaskObjective) ||
+        (currentTaskObjective === "__without_objective" && hasRoutineActivities)
+      ) {
+        elements.taskObjectiveFilter.value = currentTaskObjective;
       }
 
       if (sectors.includes(currentObjectiveSector)) {
         elements.objectiveSectorFilter.value = currentObjectiveSector;
       }
+
+      updateTaskFilterState();
     }
 
     function filteredTasks() {
-      const search = normalizeText(elements.taskSearch.value);
-      const layer = elements.taskLayerFilter.value;
-      const status = elements.taskStatusFilter.value;
       const sector = elements.taskSectorFilter.value;
+      const objectiveFilter = elements.taskObjectiveFilter.value;
 
       return currentActivities().filter(activity => {
         const objective = activityObjective(activity);
-        const normalizedStatus = normalizeStatus(activity.status);
 
-        const matchesLayer =
-          layer === "all" ||
-          (layer === "routine" && !objective) ||
-          (layer === "objectives" && objective);
-
-        const matchesStatus =
-          !status ||
-          (status === "open" && isOpen(activity)) ||
-          (status === "overdue" && isOverdue(activity)) ||
-          (status === "without_due" && isMissingDueDate(activity)) ||
-          normalizedStatus === status;
-
+        const matchesOperationalQueue = isOpen(activity);
         const matchesSector = !sector || activitySector(activity) === sector;
+        const matchesObjective =
+          !objectiveFilter ||
+          (objectiveFilter === "__without_objective" ? !objective : objective === objectiveFilter);
 
-        const haystack = normalizeText([
-          activity.title,
-          activity.detailing,
-          activity.objective_text,
-          activity.client_supplier,
-          activity.registered_by_name,
-          activity.executor_name,
-          activitySector(activity)
-        ].join(" "));
-
-        return matchesLayer && matchesStatus && matchesSector && (!search || haystack.includes(search));
+        return matchesOperationalQueue && matchesSector && matchesObjective;
       });
     }
 
     function renderTasks() {
       const tasks = sortActivities(filteredTasks());
+      const overdue = tasks.filter(isOverdue).length;
 
-      elements.tasksCountLabel.textContent = `${formatNumber(tasks.length)} atividade(s)`;
+      elements.tasksCountLabel.textContent =
+        `${formatNumber(tasks.length)} em aberto · ${formatNumber(overdue)} em atraso`;
 
       elements.tasksTable.innerHTML = tasks.length
         ? tasks.map(activityRowHtml).join("")
         : `
           <tr>
             <td colspan="7">
-              <div class="empty">Nenhuma atividade encontrada.</div>
+              <div class="empty">Nenhuma atividade aberta encontrada.</div>
             </td>
           </tr>
         `;
@@ -2453,17 +3095,51 @@
       const statusText = statusLabel(activity.status);
       const stateText = activityStateLabel(activity);
       const showStatePill = statusText !== stateText;
+      const responsible = activityResponsible(activity);
+      const sector = activitySector(activity);
+      const objective = activityObjective(activity) || "Sem objetivo";
+      const dueText = dateValue ? formatDate(dateValue) : "Sem prazo";
+      const title = activity.title || "Atividade sem título";
+      const mobileTitle = firstWords(title, 4);
 
       return `
         <tr class="${activityRowClass(activity)} ${activitySurfacePulseClass(activity)}" data-activity-id="${escapeHtml(activity.id)}">
           <td data-label="Nº">${escapeHtml(activity.activity_number ?? "—")}</td>
           <td data-label="Atividade">
-            <span class="activity-title">${escapeHtml(activity.title || "Atividade sem título")}</span>
+            <span class="activity-title activity-title-full">${escapeHtml(title)}</span>
+            <span class="activity-title-mobile">${escapeHtml(mobileTitle)}</span>
             ${
               activity.detailing
                 ? `<span class="activity-detail">${escapeHtml(truncate(activity.detailing, 210))}</span>`
                 : ""
             }
+            <span class="activity-mobile-meta">
+              <span class="activity-mobile-meta-line activity-mobile-state-line">
+                <span class="activity-mobile-meta-item activity-mobile-status ${activityStateClass(activity)}">
+                  <span class="meta-label">Status</span>
+                  <span class="meta-value">${escapeHtml(stateText)}</span>
+                </span>
+                <span class="activity-mobile-meta-item activity-mobile-deadline ${dueClass(activity)}">
+                  <span class="meta-label">Prazo</span>
+                  <span class="meta-value">${escapeHtml(dueText)}</span>
+                </span>
+              </span>
+              <span class="activity-mobile-meta-line">
+                <span class="activity-mobile-meta-item activity-mobile-owner">
+                  <span class="meta-mark" aria-hidden="true"></span>
+                  <span class="meta-label">Resp.</span>
+                  <span class="meta-value">${escapeHtml(responsible)}</span>
+                </span>
+                <span class="activity-mobile-meta-item activity-mobile-sector">
+                  <span class="meta-label">Área</span>
+                  <span class="meta-value">${escapeHtml(sector)}</span>
+                </span>
+              </span>
+              <span class="activity-mobile-meta-item activity-mobile-objective">
+                <span class="meta-label">Objetivo</span>
+                <span class="meta-value">${escapeHtml(objective)}</span>
+              </span>
+            </span>
           </td>
           <td data-label="Status">
             <span class="status-cell">
@@ -2475,10 +3151,10 @@
               ` : ""}
             </span>
           </td>
-          <td data-label="Responsável">${escapeHtml(activityResponsible(activity))}</td>
-          <td data-label="Setor">${escapeHtml(activitySector(activity))}</td>
-          <td data-label="Objetivo">${escapeHtml(activityObjective(activity) || "Sem objetivo")}</td>
-          <td data-label="Prazo" class="${dueClass(activity)}">${escapeHtml(dateValue ? formatDate(dateValue) : "Sem prazo")}</td>
+          <td data-label="Responsável">${escapeHtml(responsible)}</td>
+          <td data-label="Setor">${escapeHtml(sector)}</td>
+          <td data-label="Objetivo">${escapeHtml(objective)}</td>
+          <td data-label="Prazo" class="${dueClass(activity)}">${escapeHtml(dueText)}</td>
         </tr>
       `;
     }
@@ -2552,12 +3228,42 @@
       elements.fabToggle.setAttribute("aria-label", "Abrir menu");
     }
 
+    function openAdminAuthModal() {
+      elements.adminPasswordInput.value = "";
+      elements.adminAuthError.textContent = "";
+      elements.adminPasswordInput.classList.remove("invalid");
+      elements.adminAuthModal.style.display = "flex";
+      window.setTimeout(() => elements.adminPasswordInput.focus(), 60);
+    }
+
+    function closeAdminAuthModal() {
+      elements.adminAuthModal.style.display = "none";
+      elements.adminPasswordInput.value = "";
+      elements.adminAuthError.textContent = "";
+      elements.adminPasswordInput.classList.remove("invalid");
+    }
+
+    function submitAdminAuth() {
+      const password = String(elements.adminPasswordInput.value || "");
+
+      if (password === FAB_ACCESS_PASSWORD) {
+        closeAdminAuthModal();
+        openFabMenu();
+        return;
+      }
+
+      elements.adminAuthError.textContent = "Senha incorreta. Verifique e tente novamente.";
+      elements.adminPasswordInput.classList.add("invalid");
+      elements.adminPasswordInput.select();
+    }
+
     function toggleFabMenu() {
       if (elements.fabShell.classList.contains("open")) {
         closeFabMenu();
-      } else {
-        openFabMenu();
+        return;
       }
+
+      openAdminAuthModal();
     }
 
     function closeSectorSortMenu() {
@@ -2632,6 +3338,10 @@
         link.classList.toggle("active", link.dataset.route === state.currentRoute);
       });
 
+      document.querySelectorAll(".route-link").forEach(link => {
+        link.classList.toggle("active", link.dataset.route === state.currentRoute);
+      });
+
       document.querySelectorAll(".fab-nav-link").forEach(link => {
         link.classList.toggle("active", link.dataset.route === state.currentRoute);
       });
@@ -2639,6 +3349,7 @@
       if (state.currentRoute === "macro") renderMacro();
       if (state.currentRoute === "objectives") renderObjectives();
       if (state.currentRoute === "tasks") renderTasks();
+      if (state.currentRoute === "calendar") renderCalendar();
 
       elements.sidebar.classList.remove("open");
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -2673,6 +3384,7 @@
     }
 
     mountObjectiveFilters();
+    mountTaskFilters();
 
     document.querySelectorAll(".objective-filter").forEach(filter => {
       filter.addEventListener("toggle", () => {
@@ -2686,7 +3398,14 @@
       });
     });
 
-    document.querySelectorAll(".nav-link").forEach(link => {
+    document.querySelectorAll(".task-filter").forEach(filter => {
+      filter.addEventListener("toggle", () => {
+        if (!filter.open) return;
+        closeTaskFilters(filter);
+      });
+    });
+
+    document.querySelectorAll(".nav-link, .route-link").forEach(link => {
       link.addEventListener("click", () => navigate(link.dataset.route));
     });
 
@@ -2739,10 +3458,49 @@
       openCalendar();
     });
 
-    elements.closeCalendarButton.addEventListener("click", closeCalendar);
+    elements.closeCalendarButton?.addEventListener("click", closeCalendar);
+    elements.calendarTodayButton?.addEventListener("click", () => {
+      state.calendarDate = new Date();
+      state.calendarView = "month";
+      renderCalendar();
+    });
 
-    elements.calendarModal.addEventListener("click", event => {
+    elements.calendarModal?.addEventListener("click", event => {
       if (event.target === elements.calendarModal) closeCalendar();
+    });
+
+    elements.closeCalendarDayModalButton.addEventListener("click", closeCalendarDayModal);
+    elements.calendarDayModal.addEventListener("click", event => {
+      if (event.target === elements.calendarDayModal) closeCalendarDayModal();
+    });
+    elements.calendarDayTimeline.addEventListener("click", event => {
+      const activityTarget = event.target.closest("[data-activity-id]");
+      if (!activityTarget) return;
+
+      event.stopPropagation();
+      closeCalendarDayModal();
+      openActivityModal(activityTarget.dataset.activityId);
+    });
+
+    elements.adminLoginButton.addEventListener("click", event => {
+      event.stopPropagation();
+      submitAdminAuth();
+    });
+    elements.closeAdminAuthButton.addEventListener("click", event => {
+      event.stopPropagation();
+      closeAdminAuthModal();
+    });
+    elements.adminPasswordInput.addEventListener("input", () => {
+      elements.adminAuthError.textContent = "";
+      elements.adminPasswordInput.classList.remove("invalid");
+    });
+    elements.adminPasswordInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") submitAdminAuth();
+    });
+
+    elements.adminAuthModal.addEventListener("click", event => {
+      event.stopPropagation();
+      if (event.target === elements.adminAuthModal) closeAdminAuthModal();
     });
 
     elements.calendarPrevButton.addEventListener("click", () => {
@@ -2785,6 +3543,7 @@
 
       state.calendarDate = selected;
       renderCalendar();
+      openCalendarDayModal(selected);
     });
 
     elements.fabToggle.addEventListener("click", toggleFabMenu);
@@ -2802,6 +3561,7 @@
     document.addEventListener("click", event => {
       if (!elements.fabShell.contains(event.target)) closeFabMenu();
       if (!event.target.closest(".objective-filter-dock")) closeObjectiveFilters();
+      if (!event.target.closest(".task-filter-dock")) closeTaskFilters();
       if (
         !elements.macroSectorSort.contains(event.target) &&
         !elements.macroSectorSortMenu.contains(event.target)
@@ -2862,6 +3622,7 @@
       if (!button) return;
       state.selectedObjective = decodeURIComponent(button.dataset.objective);
       renderObjectives();
+      requestAnimationFrame(() => focusMobileObjectiveSelection(true));
     });
 
     [elements.objectiveSearch, elements.objectiveCategoryFilter, elements.objectiveSectorFilter]
@@ -2886,25 +3647,24 @@
       const row = event.target.closest("[data-sector]");
       if (!row) return;
 
-      elements.taskLayerFilter.value = "all";
-      elements.taskStatusFilter.value = "";
       elements.taskSectorFilter.value = row.dataset.sector;
+      elements.taskObjectiveFilter.value = "";
+      updateTaskFilterState();
       navigate("tasks");
     });
 
-    [elements.taskSearch, elements.taskLayerFilter, elements.taskStatusFilter, elements.taskSectorFilter]
+    [elements.taskSectorFilter, elements.taskObjectiveFilter]
       .forEach(input => {
-        input.addEventListener("input", renderTasks);
-        input.addEventListener("change", renderTasks);
+        input.addEventListener("input", () => {
+          updateTaskFilterState();
+          renderTasks();
+        });
+        input.addEventListener("change", () => {
+          updateTaskFilterState();
+          renderTasks();
+          closeTaskFilters();
+        });
       });
-
-    elements.clearTaskFilters.addEventListener("click", () => {
-      elements.taskSearch.value = "";
-      elements.taskLayerFilter.value = "routine";
-      elements.taskStatusFilter.value = "";
-      elements.taskSectorFilter.value = "";
-      renderTasks();
-    });
 
     document.addEventListener("click", event => {
       const activityTarget = event.target.closest("[data-activity-id]");
@@ -2917,8 +3677,10 @@
       closeFabMenu();
       closeSectorSortMenu();
       closeObjectiveFilters();
+      closeAdminAuthModal();
       closeConfig();
       closeActivityModal();
+      closeCalendarDayModal();
       closeCalendar();
     });
 

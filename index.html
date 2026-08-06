@@ -34,6 +34,11 @@
           <span class="nav-index">03</span>
           Rotinas e tarefas
         </button>
+
+        <button class="nav-link" data-route="calendar">
+          <span class="nav-index">04</span>
+          Calendário
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -79,6 +84,26 @@
             </div>
           </div>
         </div>
+
+
+        <nav class="route-tabs" aria-label="PÃ¡ginas principais">
+          <button class="route-link" data-route="macro" type="button">
+            <span class="route-index">01</span>
+            <span>Macro</span>
+          </button>
+          <button class="route-link" data-route="objectives" type="button">
+            <span class="route-index">02</span>
+            <span>Objetivos</span>
+          </button>
+          <button class="route-link" data-route="tasks" type="button">
+            <span class="route-index">03</span>
+            <span>Rotinas</span>
+          </button>
+          <button class="route-link" data-route="calendar" type="button">
+            <span class="route-index">04</span>
+            <span>Agenda</span>
+          </button>
+        </nav>
 
         <div class="topbar-actions">
           <select class="period-select" id="globalPeriodFilter" aria-label="Período global">
@@ -158,7 +183,7 @@
                       <th>Total</th>
                       <th>Ativas</th>
                       <th>Atraso</th>
-                      <th>Equipe agora</th>
+                      <th>Riscos</th>
                       <th>Atingimento</th>
                     </tr>
                   </thead>
@@ -245,54 +270,28 @@
           <div class="page-heading">
             <div>
               <h2>Rotinas e tarefas</h2>
-              <p>Atividades sem objetivo específico e visão geral.</p>
+              <p>Fila ativa de atividades abertas e em andamento.</p>
             </div>
             <div class="page-caption" id="tasksCountLabel"></div>
           </div>
 
-          <div class="filters">
+          <div class="task-filter-source" aria-label="Filtros da fila ativa">
             <div class="field">
-              <label for="taskSearch">Pesquisar</label>
-              <input id="taskSearch" type="search" placeholder="Atividade, objetivo, cliente..." />
-            </div>
-
-            <div class="field">
-              <label for="taskLayerFilter">Camada</label>
-              <select id="taskLayerFilter">
-                <option value="routine">Sem objetivo</option>
-                <option value="objectives">Com objetivo</option>
-                <option value="all">Todas</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="taskStatusFilter">Status</label>
-              <select id="taskStatusFilter">
-                <option value="">Todos</option>
-                <option value="open">Abertas</option>
-                <option value="overdue">Atrasadas</option>
-                <option value="without_due">Sem prazo</option>
-                <option value="concluida">Feitas</option>
-                <option value="em_andamento">Em andamento</option>
-                <option value="pendente">Pendentes</option>
-                <option value="bloqueada">Bloqueadas</option>
-                <option value="cancelada">Canceladas</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="taskSectorFilter">Setor</label>
+              <label for="taskSectorFilter">Área</label>
               <select id="taskSectorFilter">
                 <option value="">Todos</option>
               </select>
             </div>
 
-            <div class="filter-action">
-              <button class="btn" id="clearTaskFilters">Limpar</button>
+            <div class="field">
+              <label for="taskObjectiveFilter">Objetivo</label>
+              <select id="taskObjectiveFilter">
+                <option value="">Todos</option>
+              </select>
             </div>
           </div>
 
-          <article class="panel">
+          <article class="panel task-queue-panel">
             <div class="table-wrap">
               <table>
                 <thead>
@@ -308,6 +307,79 @@
                 </thead>
                 <tbody id="tasksTable"></tbody>
               </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="page-view calendar-page" data-page="calendar">
+          <article class="panel calendar-page-panel">
+            <div class="panel-body calendar-body calendar-page-body">
+              <div class="calendar-insights" id="calendarInsights"></div>
+
+              <div class="calendar-toolbar">
+                <button class="calendar-nav-button" id="calendarPrevButton" type="button" aria-label="Período anterior">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="m15 18-6-6 6-6"></path>
+                  </svg>
+                </button>
+
+                <label class="calendar-month-field">
+                  <span>Mês</span>
+                  <input id="calendarMonthInput" type="month" />
+                </label>
+
+                <button class="calendar-nav-button" id="calendarNextButton" type="button" aria-label="Próximo período">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="m9 18 6-6-6-6"></path>
+                  </svg>
+                </button>
+
+                <div class="calendar-view-toggle" aria-label="Visualização do calendário">
+                  <button class="active" data-calendar-view="month" type="button">Mês</button>
+                  <button data-calendar-view="week" type="button">Semana</button>
+                </div>
+              </div>
+
+              <div class="calendar-layout">
+                <section class="calendar-board" aria-label="Calendário de eventos">
+                  <div class="calendar-weekdays" aria-hidden="true">
+                    <span>Dom</span>
+                    <span>Seg</span>
+                    <span>Ter</span>
+                    <span>Qua</span>
+                    <span>Qui</span>
+                    <span>Sex</span>
+                    <span>Sáb</span>
+                  </div>
+                  <div class="calendar-grid" id="calendarGrid"></div>
+                </section>
+
+                <aside class="calendar-side">
+                  <section class="calendar-side-card">
+                    <header>
+                      <h3>Próximos eventos</h3>
+                      <span id="calendarDueCount"></span>
+                    </header>
+                    <div class="calendar-side-list" id="calendarDueList"></div>
+                  </section>
+
+                  <section class="calendar-side-card">
+                    <header>
+                      <h3>Conflitos</h3>
+                      <span id="calendarConflictCount"></span>
+                    </header>
+                    <div class="calendar-side-list" id="calendarConflictList"></div>
+                  </section>
+                </aside>
+              </div>
+
+              <section class="calendar-feed-panel">
+                <header>
+                  <h3 id="calendarFeedTitle">Eventos do mês</h3>
+                  <span id="calendarFeedCount"></span>
+                </header>
+                <div class="calendar-feed" id="calendarFeed"></div>
+              </section>
             </div>
           </article>
         </section>
@@ -347,7 +419,7 @@
         </button>
       </div>
 
-      <div class="fab-section">
+      <div class="fab-section fab-period-section">
         <label class="fab-field">
           <span class="fab-label">Período</span>
           <select id="fabPeriodFilter" aria-label="Período global">
@@ -377,6 +449,37 @@
     <button class="fab-toggle" id="fabToggle" type="button" aria-label="Abrir menu" aria-expanded="false">
       +
     </button>
+  </div>
+
+  <div class="modal-backdrop" id="adminAuthModal">
+    <section class="modal admin-auth-modal" role="dialog" aria-modal="true" aria-labelledby="adminAuthTitle">
+      <header class="admin-auth-header">
+        <span class="admin-auth-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <rect x="5" y="10" width="14" height="10" rx="3"></rect>
+            <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+            <path d="M12 14v2"></path>
+          </svg>
+        </span>
+        <div>
+          <h2 id="adminAuthTitle">Acesso administrativo</h2>
+          <p class="meta">Informe a senha para abrir calendario e API.</p>
+        </div>
+      </header>
+
+      <div class="admin-auth-body">
+        <label for="adminPasswordInput">Senha do administrador</label>
+        <div class="admin-password-field">
+          <input id="adminPasswordInput" type="password" autocomplete="current-password" placeholder="Digite a senha" />
+        </div>
+        <p class="admin-auth-error" id="adminAuthError" aria-live="polite"></p>
+      </div>
+
+      <footer class="admin-auth-actions">
+        <button class="btn btn-ghost" id="closeAdminAuthButton" type="button">Cancelar</button>
+        <button class="btn btn-primary" id="adminLoginButton" type="button">Entrar</button>
+      </footer>
+    </section>
   </div>
 
   <div class="modal-backdrop" id="configModal">
@@ -437,86 +540,24 @@
     </section>
   </div>
 
-  <div class="modal-backdrop" id="calendarModal">
-    <section class="modal calendar-modal" role="dialog" aria-modal="true" aria-labelledby="calendarModalTitle">
-      <header class="modal-header calendar-modal-header">
+  <div class="modal-backdrop" id="calendarDayModal">
+    <section class="modal calendar-day-modal" role="dialog" aria-modal="true" aria-labelledby="calendarDayModalTitle">
+      <header class="modal-header calendar-day-modal-header">
         <div>
-          <h2 id="calendarModalTitle">Calendário de tarefas</h2>
-          <p class="meta" id="calendarModalSubtitle">Comercial · compromissos futuros</p>
+          <h2 id="calendarDayModalTitle">Agenda do dia</h2>
+          <p class="meta" id="calendarDayModalSubtitle"></p>
         </div>
-        <button class="btn" id="closeCalendarButton">Fechar</button>
+        <button class="btn" id="closeCalendarDayModalButton" type="button">Fechar</button>
       </header>
 
-      <div class="modal-body calendar-body">
-        <div class="calendar-toolbar">
-          <button class="calendar-nav-button" id="calendarPrevButton" type="button" aria-label="Período anterior">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="m15 18-6-6 6-6"></path>
-            </svg>
-          </button>
-
-          <label class="calendar-month-field">
-            <span>Mês</span>
-            <input id="calendarMonthInput" type="month" />
-          </label>
-
-          <button class="calendar-nav-button" id="calendarNextButton" type="button" aria-label="Próximo período">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="m9 18 6-6-6-6"></path>
-            </svg>
-          </button>
-
-          <div class="calendar-view-toggle" aria-label="Visualização do calendário">
-            <button class="active" data-calendar-view="month" type="button">Mês</button>
-            <button data-calendar-view="week" type="button">Semana</button>
-          </div>
-        </div>
-
-        <div class="calendar-insights" id="calendarInsights"></div>
-
-        <div class="calendar-layout">
-          <section class="calendar-board" aria-label="Calendário Comercial">
-            <div class="calendar-weekdays" aria-hidden="true">
-              <span>Dom</span>
-              <span>Seg</span>
-              <span>Ter</span>
-              <span>Qua</span>
-              <span>Qui</span>
-              <span>Sex</span>
-              <span>Sáb</span>
-            </div>
-            <div class="calendar-grid" id="calendarGrid"></div>
-          </section>
-
-          <aside class="calendar-side">
-            <section class="calendar-side-card">
-              <header>
-                <h3>Próximos eventos</h3>
-                <span id="calendarDueCount"></span>
-              </header>
-              <div class="calendar-side-list" id="calendarDueList"></div>
-            </section>
-
-            <section class="calendar-side-card">
-              <header>
-                <h3>Conflitos</h3>
-                <span id="calendarConflictCount"></span>
-              </header>
-              <div class="calendar-side-list" id="calendarConflictList"></div>
-            </section>
-          </aside>
-        </div>
-
-        <section class="calendar-feed-panel">
-          <header>
-            <h3 id="calendarFeedTitle">Eventos do mês</h3>
-            <span id="calendarFeedCount"></span>
-          </header>
-          <div class="calendar-feed" id="calendarFeed"></div>
-        </section>
+      <div class="modal-body calendar-day-modal-body">
+        <div class="calendar-day-modal-summary" id="calendarDayModalSummary"></div>
+        <div class="calendar-day-timeline" id="calendarDayTimeline"></div>
       </div>
     </section>
   </div>
+
+  <div class="modal-backdrop" id="calendarModal" aria-hidden="true"></div>
   <script src="./assets/js/public-config.js"></script>
   <script src="./assets/js/app.js" defer></script>
 </body>
